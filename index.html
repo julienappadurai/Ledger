@@ -686,46 +686,59 @@ async function handleFile(f){
 }
 
 // ── SANTANDER XLSX PARSER ──────────────────────────────────────
-// Format: sparse xlsx, cols B=date D=desc F=amount G=balance(income) H=balance(expense)
-// As 0-indexed array: [1]=date [3]=desc [5]=amount [6]=bal_or_empty [7]=bal_or_empty
+// Sparse xlsx: B=date(string or serial), D=desc, F=amount, G=bal(income), H=bal(expense)
+// Array indices: [1]=date [3]=desc [5]=amount [6]=bal_or_empty [7]=bal_or_empty
 async function parseSantander(f){
   const buf = await f.arrayBuffer();
-  const wb = XLSX.read(buf, {type:'array'});
+  // cellDates:true converts Excel serial numbers to JS Date objects automatically
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
   const ws = wb.Sheets[wb.SheetNames[0]];
-  // Get raw rows preserving sparse columns
   const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
 
   const parsed = [];
   const dates = [];
 
+  const cleanAmt = s => {
+    if(!s && s!==0) return 0;
+    // Strip currency symbols including Ł (Santander uses Ł instead of £)
+    return parseFloat(String(s).replace(/[^0-9.]/g,''))||0;
+  };
+
+  const getDate = val => {
+    if(!val) return null;
+    // XLSX cellDates:true gives JS Date objects for serial dates
+    if(val instanceof Date) return val;
+    // String dates in DD/MM/YYYY format
+    const s = String(val).trim();
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return pDate(s);
+    return null;
+  };
+
   rows.forEach((row, ri) => {
-    const date = String(row[1]||'').trim();
-    const desc = String(row[3]||'').trim();
-    const col5 = String(row[5]||'').trim(); // always has the £ amount
-    const col6 = String(row[6]||'').trim(); // balance if income, empty if expense
-    const col7 = String(row[7]||'').trim(); // balance if expense, empty if income
+    const dateVal = row[1];
+    const desc    = String(row[3]||'').trim();
+    const col5    = String(row[5]||'').trim();
+    const col6    = String(row[6]||'').trim();
+    const col7    = String(row[7]||'').trim();
 
-    if(!date || !/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return;
-    if(!desc) return;
-
-    const cleanAmt = s => parseFloat(s.replace(/[^0-9.]/g,''))||0;
+    const d = getDate(dateVal);
+    if(!d || !desc) return;
 
     const amount = cleanAmt(col5);
     if(!amount) return;
 
-    // Determine type: if col7 has balance = expense, else income
-    const type = col7 ? 'expense' : 'income';
+    // Expense rows have balance in col7 (H), income rows have balance in col6 (G)
+    const type    = col7 ? 'expense' : 'income';
     const balance = col7 ? cleanAmt(col7) : cleanAmt(col6);
 
-    const d = pDate(date);
-    if(d) dates.push(d);
-    const month = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : S.activeMonth;
+    dates.push(d);
+    const month = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 
     parsed.push({
       id: `i_${Date.now()}_${ri}_${Math.random().toString(36).slice(2,6)}`,
       desc, amount, type, accountId: I.accId,
       category: gCat(desc), month,
-      date: d ? d.toISOString() : new Date().toISOString(),
+      date: d.toISOString(),
       _bal: balance || null
     });
   });
