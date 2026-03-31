@@ -134,6 +134,18 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 /* Date input dark styling */
 input[type="date"]{color-scheme:dark;}
 input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
+
+/* ── PIN ── */
+.pin-dots{display:flex;gap:12px;justify-content:center;margin-bottom:24px;}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);transition:all .15s;}
+.pin-dot.filled{background:var(--gold);border-color:var(--gold);}
+.pin-dot.error{background:var(--red);border-color:var(--red);}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:240px;margin:0 auto;}
+.pin-key{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:20px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .15s;color:var(--text);text-align:center;user-select:none;}
+.pin-key:hover{border-color:var(--gold);color:var(--gold);}
+.pin-key:active{transform:scale(.94);}
+.pin-key.del{font-size:16px;color:var(--muted);}
+.pin-key.del:hover{border-color:var(--red);color:var(--red);}
 </style>
 </head>
 <body>
@@ -142,17 +154,22 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 <div id="authWrap">
   <div class="auth-card">
     <h1>Ledger</h1>
-    <p>Your personal savings tracker.<br>Data stored <strong style="color:var(--text)">only in your Google Drive</strong>.</p>
-    <ul>
-      <li>Monthly income &amp; spending tracker</li>
-      <li>Syncs across phone &amp; laptop</li>
-      <li>No servers — just your Drive</li>
-    </ul>
-    <button class="btn-google" onclick="signIn()">
-      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-      Sign in with Google
-    </button>
-    <div id="authMsg"></div>
+    <p style="margin-bottom:24px;">Your personal savings tracker.</p>
+    <div id="pinSetupWrap" style="display:none;">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">First time setup — choose a 4-digit PIN to protect your data.</p>
+      <div class="pin-dots" id="pinDots1"></div>
+      <div class="pin-pad" id="pinPad1"></div>
+      <div id="pinSetupMsg" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:8px;"></div>
+    </div>
+    <div id="pinLoginWrap" style="display:none;">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Enter your PIN to access Ledger.</p>
+      <div class="pin-dots" id="pinDots2"></div>
+      <div class="pin-pad" id="pinPad2"></div>
+      <div id="pinLoginMsg" style="font-size:12px;color:var(--red);min-height:18px;margin-top:8px;"></div>
+    </div>
+    <div id="pinLoadingWrap">
+      <div style="color:var(--muted);font-size:13px;">Loading…</div>
+    </div>
   </div>
 </div>
 
@@ -265,6 +282,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button onclick="addAccount()" style="width:100%;margin-top:8px;padding:9px;background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);cursor:pointer;font-size:13px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Add Account</button>
     </div>
     <div class="mbtns"><button class="mbtn-g" onclick="closeSettings()">Cancel</button><button class="mbtn-p" onclick="saveSettings()">Save</button></div>
+    <div style="margin-top:12px;text-align:center;"><button onclick="changePin()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:underline;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">Change PIN</button></div>
   </div>
 </div>
 
@@ -338,11 +356,6 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 // ═══════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════
-const CLIENT_ID = '259135370683-2kh47mi72o35829gd5e82fqo8hnan56a.apps.googleusercontent.com';
-const API_KEY   = 'AIzaSyB9FjDiIuLwRgQm6bus-VbbWybvjWb4RnM';
-const SCOPES    = 'https://www.googleapis.com/auth/drive.file';
-const FOLDER    = 'Finance Tracker';
-const FILENAME  = 'ledger-data.json';
 
 // ═══════════════════════════════════════════════
 // STATE
@@ -350,7 +363,6 @@ const FILENAME  = 'ledger-data.json';
 // months: { "2025-01": { income: [{id,src,amt}], spending: [{id,cat,amt}] } }
 // settings: { name, goal, accounts: [{id,name,balance}] }
 let D = { months:{}, settings:{ name:'', goal:2000, accounts:[] } };
-let folderId=null, fileId=null, tokenClient=null, gapiOk=false;
 let editingIncome=null, editingCat=null;
 
 const NOW  = new Date();
@@ -376,11 +388,142 @@ function totalSpending(k){ return getMonth(k).spending.reduce((s,r)=>s+r.amt,0);
 function saved(k){ return totalIncome(k)-totalSpending(k); }
 
 // ═══════════════════════════════════════════════
-// GOOGLE AUTH & DRIVE
+// PIN + GOOGLE DRIVE SYNC
 // ═══════════════════════════════════════════════
-// Track whether we have an active token
-let hasToken = false;
+const CLIENT_ID = '259135370683-2kh47mi72o35829gd5e82fqo8hnan56a.apps.googleusercontent.com';
+const API_KEY   = 'AIzaSyB9FjDiIuLwRgQm6bus-VbbWybvjWb4RnM';
+const SCOPES    = 'https://www.googleapis.com/auth/drive.file';
+const FOLDER    = 'Finance Tracker';
+const FILENAME  = 'ledger-data.json';
+const PIN_KEY   = 'ledger_pin';
+const DATA_KEY  = 'ledger_data_cache'; // local cache for offline/fast load
 
+let pinBuffer = '';
+let pinMode   = 'login'; // 'setup' | 'login' | 'confirm'
+let pinFirst  = '';
+let folderId  = null, fileId = null, tokenClient = null, gapiOk = false;
+let driveReady = false;
+
+// ── UI helpers ──
+function showLoad(t){ $id('loadWrap').style.display='flex'; $id('loadTxt').textContent=(t||'LOADING').toUpperCase(); }
+function hideLoad(){ $id('loadWrap').style.display='none'; }
+
+function setSyncBtn(cls, lbl){
+  const b=$id('syncBtn'); b.className='hbtn'+(cls?' '+cls:''); b.textContent=lbl;
+}
+
+// ── PIN SCREEN ──
+function showPinScreen(){
+  hideLoad();
+  $id('authWrap').style.display='flex';
+  $id('appWrap').style.display='none';
+  const hasPin = !!localStorage.getItem(PIN_KEY);
+  $id('pinSetupWrap').style.display  = hasPin ? 'none' : '';
+  $id('pinLoginWrap').style.display  = hasPin ? ''     : 'none';
+  $id('pinLoadingWrap').style.display = 'none';
+  pinBuffer = ''; pinFirst = '';
+  pinMode   = hasPin ? 'login' : 'setup';
+  buildPinPad('pinPad1', handleSetupKey);
+  buildPinPad('pinPad2', handleLoginKey);
+  updateDots('pinDots1', 4, 0, false);
+  updateDots('pinDots2', 4, 0, false);
+}
+
+function showApp(){
+  $id('authWrap').style.display='none';
+  $id('appWrap').style.display='block';
+  hideLoad();
+}
+
+function signOut(){
+  if(!confirm('Lock Ledger?')) return;
+  $id('appWrap').style.display='none';
+  showPinScreen();
+}
+
+// ── PIN PAD ──
+function buildPinPad(containerId, handler){
+  const pad = $id(containerId); pad.innerHTML = '';
+  [1,2,3,4,5,6,7,8,9,'',0,'⌫'].forEach(k=>{
+    const btn = document.createElement('div');
+    btn.className = 'pin-key'+(k==='⌫'?' del':'');
+    btn.textContent = k==='' ? '' : k;
+    if(k==='') btn.style.cssText='pointer-events:none;opacity:0;';
+    else btn.addEventListener('click', ()=> handler(String(k)));
+    pad.appendChild(btn);
+  });
+}
+
+function updateDots(dotId, total, filled, isError){
+  const wrap=$id(dotId); wrap.innerHTML='';
+  for(let i=0;i<total;i++){
+    const d=document.createElement('div');
+    d.className='pin-dot'+(i<filled?(isError?' error':' filled'):'');
+    wrap.appendChild(d);
+  }
+}
+
+// ── SETUP FLOW (first time) ──
+function handleSetupKey(key){
+  if(key==='⌫') pinBuffer=pinBuffer.slice(0,-1);
+  else if(pinBuffer.length<4) pinBuffer+=key;
+  updateDots('pinDots1', 4, pinBuffer.length, false);
+  if(pinBuffer.length===4){
+    if(pinMode==='setup'){
+      pinFirst=pinBuffer; pinBuffer=''; pinMode='confirm';
+      $id('pinSetupMsg').textContent='Confirm your PIN';
+      $id('pinSetupMsg').style.color='var(--muted)';
+      updateDots('pinDots1',4,0,false);
+    } else {
+      if(pinBuffer===pinFirst){
+        localStorage.setItem(PIN_KEY, btoa(pinBuffer));
+        pinBuffer=''; pinFirst='';
+        enterApp();
+      } else {
+        updateDots('pinDots1',4,4,true);
+        $id('pinSetupMsg').textContent="PINs don't match — try again";
+        $id('pinSetupMsg').style.color='var(--red)';
+        setTimeout(()=>{ pinBuffer=''; pinFirst=''; pinMode='setup'; updateDots('pinDots1',4,0,false); $id('pinSetupMsg').textContent='Choose a 4-digit PIN'; $id('pinSetupMsg').style.color='var(--muted)'; },900);
+      }
+    }
+  }
+}
+
+// ── LOGIN FLOW ──
+function handleLoginKey(key){
+  if(key==='⌫') pinBuffer=pinBuffer.slice(0,-1);
+  else if(pinBuffer.length<4) pinBuffer+=key;
+  updateDots('pinDots2', 4, pinBuffer.length, false);
+  if(pinBuffer.length===4){
+    const stored=localStorage.getItem(PIN_KEY);
+    if(stored && btoa(pinBuffer)===stored){
+      pinBuffer='';
+      enterApp();
+    } else {
+      updateDots('pinDots2',4,4,true);
+      $id('pinLoginMsg').textContent='Incorrect PIN';
+      setTimeout(()=>{ pinBuffer=''; updateDots('pinDots2',4,0,false); $id('pinLoginMsg').textContent=''; },900);
+    }
+  }
+}
+
+// ── ENTER APP ──
+// Load from local cache instantly, then sync with Drive in background
+function enterApp(){
+  // Load cached data first so app feels instant
+  const cached=localStorage.getItem(DATA_KEY);
+  if(cached){
+    try{ const loaded=JSON.parse(cached); D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[]},loaded); }
+    catch(e){ console.warn('Cache parse error'); }
+  }
+  showApp();
+  setSyncBtn('saving','● Connecting…');
+  render();
+  // Connect to Drive in background
+  connectDrive();
+}
+
+// ── GOOGLE DRIVE (background) ──
 function gapiLoaded(){
   gapi.load('client', async ()=>{
     try{
@@ -389,137 +532,126 @@ function gapiLoaded(){
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: async r=>{
-          if(r.error){
-            console.log('Token error:', r.error);
-            // Silent refresh failed - just show sign-in screen quietly
-            // This is normal on first visit or if Google session expired
-            hideLoad();
-            showAuth();
-            return;
-          }
-          hasToken = true;
-          localStorage.setItem('ledger_signed_in','1');
-          await connectDrive();
+          if(r.error){ setSyncBtn('','● Drive unavailable'); return; }
+          localStorage.setItem('ledger_gtoken', JSON.stringify(gapi.client.getToken()));
+          await syncWithDrive();
         }
       });
       gapiOk = true;
-
-      // If user has signed in before, try a silent token refresh (no popup)
-      const wasSignedIn = localStorage.getItem('ledger_signed_in');
-      if(wasSignedIn){
-        showLoad('Signing in…');
-        // prompt:'' = silent refresh using existing Google session
-        // If it fails, the callback will quietly show the sign-in screen
-        try {
-          tokenClient.requestAccessToken({prompt:''});
-        } catch(e) {
-          // Silent refresh not supported - show sign-in screen
-          showAuth();
-        }
-      } else {
-        showAuth();
-      }
-    } catch(e){
-      console.error('GAPI init error:', e);
-      showAuth('Could not load Google API. Check your connection.');
-    }
+    } catch(e){ console.error('GAPI init:', e); }
   });
 }
 function gsiLoaded(){}
 
-function signIn(){
-  if(!gapiOk){ $id('authMsg').textContent='Still loading, please wait…'; return; }
-  $id('authMsg').textContent='Opening sign-in…';
-  // prompt:'select_account' lets user pick account, consent if needed
-  tokenClient.requestAccessToken({prompt:'select_account'});
-}
-
-function signOut(){
-  if(!confirm('Sign out? Your data is saved to Google Drive.')) return;
-  try{ google.accounts.oauth2.revoke(gapi.client.getToken()?.access_token,()=>{}); }catch(e){}
-  gapi.client.setToken(null);
-  hasToken = false;
-  localStorage.removeItem('ledger_signed_in');
-  $id('appWrap').style.display='none';
-  $id('authWrap').style.display='flex';
-  hideLoad();
-}
-
-function showLoad(t){ $id('loadWrap').style.display='flex'; $id('loadTxt').textContent=(t||'LOADING').toUpperCase(); }
-function hideLoad(){ $id('loadWrap').style.display='none'; }
-function showAuth(msg){ hideLoad(); $id('authWrap').style.display='flex'; if(msg) $id('authMsg').textContent=msg; }
-
 async function connectDrive(){
-  showLoad('Connecting to Drive…');
+  if(!gapiOk){
+    // GAPI not ready yet — wait up to 5s then try
+    let waited=0;
+    const wait=()=>new Promise(r=>setTimeout(r,200));
+    while(!gapiOk && waited<5000){ await wait(); waited+=200; }
+    if(!gapiOk){ setSyncBtn('','● Drive unavailable'); return; }
+  }
+  // Try stored token first (silent)
+  const stored=localStorage.getItem('ledger_gtoken');
+  if(stored){
+    try{
+      gapi.client.setToken(JSON.parse(stored));
+      await syncWithDrive();
+      return;
+    } catch(e){ localStorage.removeItem('ledger_gtoken'); }
+  }
+  // No stored token — request silently (uses existing Google session)
   try{
-    // Find/create folder
+    tokenClient.requestAccessToken({prompt:''});
+  } catch(e){
+    setSyncBtn('','● Drive unavailable');
+  }
+}
+
+async function syncWithDrive(){
+  setSyncBtn('saving','● Syncing…');
+  try{
+    // Find or create folder
     let r=await gapi.client.drive.files.list({q:`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,fields:'files(id)',spaces:'drive'});
     if(r.result.files.length){ folderId=r.result.files[0].id; }
     else{
-      let c=await gapi.client.drive.files.create({resource:{name:FOLDER,mimeType:'application/vnd.google-apps.folder'},fields:'id'});
+      const c=await gapi.client.drive.files.create({resource:{name:FOLDER,mimeType:'application/vnd.google-apps.folder'},fields:'id'});
       folderId=c.result.id;
     }
-    // Find/create data file
+    // Find or create data file
     r=await gapi.client.drive.files.list({q:`name='${FILENAME}' and '${folderId}' in parents and trashed=false`,fields:'files(id)',spaces:'drive'});
     if(r.result.files.length){
       fileId=r.result.files[0].id;
+      // Load from Drive and merge (Drive is source of truth)
       const res=await gapi.client.drive.files.get({fileId,alt:'media'});
-      try{ const loaded=JSON.parse(res.body); D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]}},loaded); }
-      catch(e){ console.warn('Could not parse saved data, starting fresh'); }
+      try{
+        const driveData=JSON.parse(res.body);
+        D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[]},driveData);
+        localStorage.setItem(DATA_KEY, JSON.stringify(D));
+        render(); // Re-render with Drive data
+      } catch(e){ console.warn('Drive parse error'); }
     } else {
+      // New file — write current data to Drive
       const c=await gapi.client.drive.files.create({resource:{name:FILENAME,parents:[folderId],mimeType:'application/json'},fields:'id'});
       fileId=c.result.id;
-      await writeDrive();
+      await writeToDrive();
     }
-    $id('authWrap').style.display='none';
-    $id('appWrap').style.display='block';
-    hideLoad();
-    setSyncBtn('ok','● Saved');
-    render();
+    driveReady=true;
+    setSyncBtn('ok','● Synced '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
   } catch(e){
-    console.error('Drive connect error:', e);
-    const status = e?.result?.error?.status || e?.status || '';
-    if(status === 'UNAUTHENTICATED' || status === 401 || String(e).includes('401')){
-      // Token expired - try silent refresh
-      hasToken = false;
-      gapi.client.setToken(null);
-      if(gapiOk && tokenClient){
-        showLoad('Refreshing session…');
-        tokenClient.requestAccessToken({prompt:''});
-      } else {
-        showAuth('Please sign in again.');
-      }
+    console.error('Drive sync error:', e);
+    const status=e?.result?.error?.status||'';
+    if(status==='UNAUTHENTICATED'||String(e).includes('401')){
+      localStorage.removeItem('ledger_gtoken');
+      // Try silent re-auth
+      try{ tokenClient.requestAccessToken({prompt:''}); }
+      catch(err){ setSyncBtn('','● Drive unavailable'); }
     } else {
-      // Network or other error
-      showAuth('Could not reach Google Drive. Check your connection and try again.');
+      setSyncBtn('','● Drive unavailable');
     }
   }
 }
 
-async function writeDrive(){
+async function writeToDrive(){
   if(!fileId) return;
+  await gapi.client.request({
+    path:`/upload/drive/v3/files/${fileId}`,method:'PATCH',
+    params:{uploadType:'media'},headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(D,null,2)
+  });
+}
+
+// ── SAVE ──
+async function save(){
+  // Always save to local cache immediately
+  localStorage.setItem(DATA_KEY, JSON.stringify(D));
   setSyncBtn('saving','● Saving…');
-  try{
-    await gapi.client.request({path:`/upload/drive/v3/files/${fileId}`,method:'PATCH',params:{uploadType:'media'},headers:{'Content-Type':'application/json'},body:JSON.stringify(D,null,2)});
-    setSyncBtn('ok','● Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
-  } catch(e){
-    console.error('Write error:', e);
-    const status = e?.result?.error?.status || '';
-    if(status === 'UNAUTHENTICATED' || String(e).includes('401')){
-      // Silently refresh token and retry
-      if(gapiOk && tokenClient) tokenClient.requestAccessToken({prompt:''});
-    } else {
-      setSyncBtn('','● Save failed');
+  if(driveReady && fileId){
+    try{
+      await writeToDrive();
+      localStorage.setItem('ledger_gtoken', JSON.stringify(gapi.client.getToken()));
+      setSyncBtn('ok','● Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
+    } catch(e){
+      console.error('Save error:', e);
+      setSyncBtn('','● Local only');
     }
+  } else {
+    setSyncBtn('ok','● Saved locally');
   }
 }
+async function manualSync(){ if(driveReady) await syncWithDrive(); else await connectDrive(); }
 
-async function save(){ await writeDrive(); }
-async function manualSync(){ await writeDrive(); }
-
-function setSyncBtn(cls,lbl){
-  const b=$id('syncBtn'); b.className='hbtn'+(cls?' '+cls:''); b.textContent=lbl;
+// ── CHANGE PIN ──
+function changePin(){
+  localStorage.removeItem(PIN_KEY);
+  $id('appWrap').style.display='none';
+  showPinScreen();
 }
+
+// ── INIT ──
+window.addEventListener('load', ()=>{
+  showPinScreen();
+});
 
 // ═══════════════════════════════════════════════
 // RENDER
@@ -919,7 +1051,8 @@ function removeAccount(id){
 }
 </script>
 
-<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" onerror="showAuth('Could not load Google API.')"></script>
+
+<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 <script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
 </body>
 </html>
