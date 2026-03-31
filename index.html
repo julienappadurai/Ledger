@@ -681,23 +681,26 @@ function buildMonthStrip(){
   setTimeout(()=>{ const on=strip.querySelector('.on'); if(on) on.scrollIntoView({inline:'center',behavior:'smooth'}); },50);
 }
 
-function renderStats(){
-  const sv=savedEff(activeMonth);
-  const inc=totalIncomeEff(activeMonth);
-  const rate=inc>0?Math.round(sv/inc*100):0;
-  const [y]=activeMonth.split('-');
-  // Get all months that have any data (direct or from templates)
-  const allMonthKeys=new Set([...Object.keys(D.months),...(D.templates||[]).map(t=>t.startMonth)]);
-  // Also add all months the templates generate
+function getAllMonthKeys(){
+  const keys=new Set([...Object.keys(D.months),...(D.templates||[]).map(t=>t.startMonth)]);
   (D.templates||[]).forEach(t=>{
     const interval=REPEAT_MONTHS[t.repeat]||0;
     if(!interval) return;
     const [sy,sm]=t.startMonth.split('-').map(Number);
     for(let i=0;i<=24;i+=interval){
       const d=new Date(sy,sm-1+i,1);
-      allMonthKeys.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+      keys.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
     }
   });
+  return keys;
+}
+
+function renderStats(){
+  const sv=savedEff(activeMonth);
+  const inc=totalIncomeEff(activeMonth);
+  const rate=inc>0?Math.round(sv/inc*100):0;
+  const [y]=activeMonth.split('-');
+  const allMonthKeys=getAllMonthKeys();
   const yearSaved=[...allMonthKeys].filter(k=>k.startsWith(y)).reduce((s,k)=>s+savedEff(k),0);
   const monthCount=[...allMonthKeys].filter(k=>k.startsWith(y)&&(totalIncomeEff(k)||totalSpendingEff(k))).length;
   const netWorth=D.settings.accounts.reduce((s,a)=>s+a.balance,0);
@@ -803,7 +806,7 @@ function renderYearTable(){
     const k=`${y}-${String(m).padStart(2,'0')}`;
     months.push({k,lbl:new Date(+y,m-1,1).toLocaleString('en-GB',{month:'long'}),inc:totalIncomeEff(k),sp:totalSpendingEff(k),sv:savedEff(k)});
   }
-  const yearTotal=[...allMonthKeys].filter(k=>k.startsWith(y)).reduce((s,k)=>s+savedEff(k),0);
+  const yearTotal=months.reduce((s,m)=>s+m.sv,0);
   tbl.innerHTML=`<thead><tr>
     <th>Month</th><th>Income</th><th>Spending</th><th style="text-align:right">Saved</th>
   </tr></thead><tbody>`+
@@ -1049,13 +1052,8 @@ function removeAccount(id){
   D.settings.accounts=D.settings.accounts.filter(x=>x.id!==id);
   renderAccountList();
 }
-</script>
 
-
-<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
-<script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
-</body>
-</html>// ── HELPERS ──────────────────────────────────────
+// ── HELPERS ──────────────────────────────────────
 function defaultDateForMonth(k){
   const [y,m]=k.split('-').map(Number);
   const now=new Date();
@@ -1099,5 +1097,10 @@ function getEffectiveEntries(k, type){
   });
   return direct;
 }
+</script>
 
 
+<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
+<script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
+</body>
+</html>
