@@ -673,7 +673,9 @@ async function handleFile(f){
     const bytes=new Uint8Array(buf);
     // Check if it's HTML disguised as XLS (Santander style)
     const head=new TextDecoder('utf-8',{fatal:false}).decode(bytes.slice(0,20)).toLowerCase();
+    console.log('XLS head:', head.slice(0,30));
     if(head.includes('<!doctype')||head.includes('<html')){
+      console.log('Detected HTML-XLS, calling parseHtmlXls');
       parseHtmlXls(new TextDecoder('iso-8859-1').decode(bytes));
       return; // parseHtmlXls handles navigation directly
     } else {
@@ -1002,6 +1004,8 @@ function gCat(h){
 </html>function parseHtmlXls(html){
   // Parse Santander HTML-disguised XLS
   // td positions per data row: [0]=date [1]=desc [2]=money_in [3]=money_out [4]=balance
+  try {
+  console.log('parseHtmlXls called, html length:', html.length);
   function clean(s){
     s=(s||'').replace(/<[^>]+>/g,' ').replace(/ï¿½/g,'').replace(/\xa0/g,'').replace(/&nbsp;/g,'').replace(/,/g,'');
     return s.replace(/\s+/g,' ').trim();
@@ -1052,6 +1056,10 @@ function gCat(h){
   // Skip straight to balance step
   buildBalStep();
   iStep(3);
+  } catch(e) {
+    console.error('parseHtmlXls error:', e);
+    alert('Error parsing file: ' + e.message + '\nPlease check the browser console for details.');
+  }
 }
 
 
