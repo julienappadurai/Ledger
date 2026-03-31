@@ -1055,7 +1055,25 @@ function removeAccount(id){
 <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 <script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
 </body>
-</html>function templateAppliesTo(tmpl, k){
+</html>// ── HELPERS ──────────────────────────────────────
+function defaultDateForMonth(k){
+  const [y,m]=k.split('-').map(Number);
+  const now=new Date();
+  if(y===now.getFullYear()&&m===(now.getMonth()+1)) return now.toISOString().slice(0,10);
+  return new Date(y,m,0).toISOString().slice(0,10);
+}
+
+const REPEAT_MONTHS={none:0,monthly:1,quarterly:3,biannually:6,annually:12};
+
+function repeatLabel(r){
+  return {none:'',monthly:'Repeats monthly',quarterly:'Repeats every 3 months',biannually:'Repeats every 6 months',annually:'Repeats annually'}[r]||'';
+}
+
+function totalIncomeEff(k){ return getEffectiveEntries(k,'income').reduce((s,r)=>s+r.amt,0); }
+function totalSpendingEff(k){ return getEffectiveEntries(k,'spending').reduce((s,r)=>s+r.amt,0); }
+function savedEff(k){ return totalIncomeEff(k)-totalSpendingEff(k); }
+
+function templateAppliesTo(tmpl, k){
   if(!tmpl.repeat||tmpl.repeat==='none') return false;
   const interval=REPEAT_MONTHS[tmpl.repeat];
   if(!interval) return false;
