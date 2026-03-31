@@ -284,6 +284,24 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
         <span style="color:#c9a84c;">Nationwide</span> → Statements → Download &nbsp;·&nbsp; <span style="color:#c9a84c;">Santander</span> → My Money → Export<br>
         <span style="color:#c9a84c;">Amex</span> → Account → Download Transactions
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        <div class="field" style="margin:0;">
+          <label>Skip header rows</label>
+          <input type="number" id="skipRows" value="0" min="0" max="20" style="background:#1e1f1d;border:1px solid #2a2b29;border-radius:7px;padding:9px 12px;color:#e8e6df;font-size:13px;outline:none;width:100%;">
+          <div style="font-size:10px;color:#7a7870;margin-top:4px;">Rows to skip before the header row</div>
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Column separator</label>
+          <select id="csvSep" style="background:#1e1f1d;border:1px solid #2a2b29;border-radius:7px;padding:9px 12px;color:#e8e6df;font-size:13px;outline:none;width:100%;">
+            <option value="auto">Auto-detect</option>
+            <option value=",">Comma (,)</option>
+            <option value=";">Semicolon (;)</option>
+            <option value="\t">Tab</option>
+            <option value="|">Pipe (|)</option>
+          </select>
+          <div style="font-size:10px;color:#7a7870;margin-top:4px;">How columns are separated</div>
+        </div>
+      </div>
       <div class="mbtns"><button class="mbtn-g" onclick="closeImp()">Cancel</button></div>
     </div>
 
@@ -661,11 +679,44 @@ async function handleFile(f){
   iStep(2);
 }
 
+function detectSep(line){
+  // Count occurrences of each candidate separator outside quotes
+  const candidates=[',',';','\t','|'];
+  let best=',', bestCount=0;
+  candidates.forEach(sep=>{
+    let count=0,inQ=false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"') inQ=!inQ;
+      else if(!inQ&&line[i]===sep) count++;
+    }
+    if(count>bestCount){bestCount=count;best=sep;}
+  });
+  return best;
+}
+
+function splitRow(line, sep){
+  const c=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    if(line[i]==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}
+    else if(line[i]===sep&&!q){c.push(cur.trim());cur='';}
+    else cur+=line[i];
+  }
+  c.push(cur.trim());
+  return c;
+}
+
 function parseCSV(txt){
-  const lines=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
-  function sr(line){const c=[];let cur='',q=false;for(let i=0;i<line.length;i++){if(line[i]==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if(line[i]===','&&!q){c.push(cur.trim());cur='';}else cur+=line[i];}c.push(cur.trim());return c;}
-  I.hdrs=sr(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
-  I.rows=lines.slice(1).map(sr).filter(r=>r.some(c=>c!==''));
+  const skipRows=parseInt($id('skipRows')?.value||'0')||0;
+  const sepSel=$id('csvSep')?.value||'auto';
+  let lines=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  // Skip header rows
+  if(skipRows>0) lines=lines.slice(skipRows);
+  lines=lines.filter(l=>l.trim());
+  if(!lines.length){alert('No data found in file.');return;}
+  // Detect separator
+  const sep=sepSel==='auto'?detectSep(lines[0]):(sepSel==='\\t'?'\t':sepSel);
+  I.hdrs=splitRow(lines[0],sep).map(h=>h.replace(/^"|"$/g,'').trim());
+  I.rows=lines.slice(1).map(l=>splitRow(l,sep)).filter(r=>r.some(c=>c!==''));
   buildMap();
 }
 
@@ -750,15 +801,15 @@ function doMap(){
     const ri2=gMap('reference'), ci=gMap('category'), bi=gMap('balance');
     const ref=ri2>=0?String(row[ri2]||'').trim():'';
     const catR=ci>=0?String(row[ci]||'').trim():'';
-    const bal=bi>=0?parseFloat(String(row[bi]).replace(/[£,\s]/g,'').replace(/[^0-9.\-]/g,''))||null:null;
+    const bal=bi>=0?parseFloat(String(row[bi]).replace(/[£$€,\s]/g,'').replace(/\+/g,'').replace(/[^0-9.\-]/g,''))||null:null;
     let amount=0,type='expense';
     if(I.mode==='single'){
-      const raw=String(row[gMap('amount')]||'').replace(/[£,\s]/g,'').replace(/[^0-9.\-]/g,'');
+      const raw=String(row[gMap('amount')]||'').replace(/[£$€,\s]/g,'').replace(/\+/g,'').replace(/[^0-9.\-]/g,'');
       const v=parseFloat(raw)||0;amount=Math.abs(v);type=v>=0?'income':'expense';
     }else{
       const di=gMap('debit'),cri=gMap('credit');
-      const deb=di>=0?Math.abs(parseFloat(String(row[di]||'').replace(/[£,\s]/g,'').replace(/[^0-9.]/g,''))||0):0;
-      const cre=cri>=0?Math.abs(parseFloat(String(row[cri]||'').replace(/[£,\s]/g,'').replace(/[^0-9.]/g,''))||0):0;
+      const deb=di>=0?Math.abs(parseFloat(String(row[di]||'').replace(/[£$€,\s+]/g,'').replace(/[^0-9.\-]/g,''))||0):0;
+      const cre=cri>=0?Math.abs(parseFloat(String(row[cri]||'').replace(/[£$€,\s+]/g,'').replace(/[^0-9.\-]/g,''))||0):0;
       if(cre>0){amount=cre;type='income';}else if(deb>0){amount=deb;type='expense';}
     }
     if(!amount)return;
