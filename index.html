@@ -1055,4 +1055,31 @@ function removeAccount(id){
 <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 <script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
 </body>
-</html>
+</html>function templateAppliesTo(tmpl, k){
+  if(!tmpl.repeat||tmpl.repeat==='none') return false;
+  const interval=REPEAT_MONTHS[tmpl.repeat];
+  if(!interval) return false;
+  const [sy,sm]=tmpl.startMonth.split('-').map(Number);
+  const [ty,tm]=k.split('-').map(Number);
+  const diff=(ty-sy)*12+(tm-sm);
+  return diff>=0 && diff%interval===0;
+}
+
+function getEffectiveEntries(k, type){
+  const direct=(getMonth(k)[type]||[]).slice();
+  const overriddenIds=new Set(direct.filter(e=>e.templateId).map(e=>e.templateId+'_'+k));
+  const deletedIds=new Set((D.deleted||[]).filter(d=>d.month===k).map(d=>d.templateId));
+  (D.templates||[]).filter(t=>t.type===type&&templateAppliesTo(t,k)).forEach(tmpl=>{
+    if(!overriddenIds.has(tmpl.id+'_'+k)&&!deletedIds.has(tmpl.id)){
+      const [oy,om,od]=tmpl.startDate.split('-').map(Number);
+      const [ty,tm]=k.split('-').map(Number);
+      const daysInMonth=new Date(ty,tm,0).getDate();
+      const day=Math.min(od,daysInMonth);
+      const date=`${k}-${String(day).padStart(2,'0')}`;
+      direct.push({id:tmpl.id+'_gen_'+k,src:tmpl.src,cat:tmpl.cat,amt:tmpl.amt,date,templateId:tmpl.id,generated:true});
+    }
+  });
+  return direct;
+}
+
+
