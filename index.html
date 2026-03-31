@@ -390,12 +390,14 @@ function gapiLoaded(){
         scope: SCOPES,
         callback: async r=>{
           if(r.error){
-            console.error('Token error:', r);
-            showAuth('Sign-in failed. Please try again.');
+            console.log('Token error:', r.error);
+            // Silent refresh failed - just show sign-in screen quietly
+            // This is normal on first visit or if Google session expired
+            hideLoad();
+            showAuth();
             return;
           }
           hasToken = true;
-          // Remember the user has signed in before (not the token itself)
           localStorage.setItem('ledger_signed_in','1');
           await connectDrive();
         }
@@ -406,8 +408,14 @@ function gapiLoaded(){
       const wasSignedIn = localStorage.getItem('ledger_signed_in');
       if(wasSignedIn){
         showLoad('Signing in…');
-        // prompt:'' means silent - uses existing Google session, no popup
-        tokenClient.requestAccessToken({prompt:''});
+        // prompt:'' = silent refresh using existing Google session
+        // If it fails, the callback will quietly show the sign-in screen
+        try {
+          tokenClient.requestAccessToken({prompt:''});
+        } catch(e) {
+          // Silent refresh not supported - show sign-in screen
+          showAuth();
+        }
       } else {
         showAuth();
       }
@@ -482,8 +490,8 @@ async function connectDrive(){
         showAuth('Please sign in again.');
       }
     } else {
-      // Other error (network, etc) - show auth screen
-      showAuth('Could not connect to Google Drive. Please try again.');
+      // Network or other error
+      showAuth('Could not reach Google Drive. Check your connection and try again.');
     }
   }
 }
