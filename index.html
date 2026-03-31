@@ -273,10 +273,10 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
       <div class="msub">Upload a file from your bank — CSV or Excel</div>
       <div class="field"><label>Account</label><select id="impAcct"></select></div>
       <div class="dz" id="dz" onclick="document.getElementById('fi').click()">
-        <input type="file" id="fi" accept=".csv,.xls,.xlsx,.ofx,.qfx">
+        <input type="file" id="fi" accept=".csv,.txt,.xls,.xlsx,.ofx,.qfx">
         <div style="font-size:32px;margin-bottom:10px;">📂</div>
         <div style="font-size:14px;font-weight:500;margin-bottom:5px;">Click or drag &amp; drop</div>
-        <div style="font-size:12px;color:#7a7870;">CSV · Excel (.xlsx) · OFX</div>
+        <div style="font-size:12px;color:#7a7870;">CSV · TXT · Excel (.xlsx) · OFX</div>
       </div>
       <div style="margin-top:12px;font-size:12px;color:#7a7870;line-height:1.9;background:#1e1f1d;border-radius:8px;padding:12px;">
         <strong style="color:#e8e6df;display:block;margin-bottom:3px;">How to export</strong>
@@ -667,7 +667,7 @@ async function handleFile(f){
   if(!I.accId){alert('Please select an account.');return;}
   $id('ip2sub').textContent='File: '+f.name+' — adjust any column that looks wrong.';
   const ext=f.name.split('.').pop().toLowerCase();
-  if(ext==='csv'){parseCSV(await f.text());}
+  if(ext==='csv'||ext==='txt'){parseCSV(await f.text());}
   else if(ext==='xlsx'||ext==='xls'){
     const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
