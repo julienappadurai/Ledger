@@ -378,25 +378,43 @@ function saved(k){ return totalIncome(k)-totalSpending(k); }
 // ═══════════════════════════════════════════════
 // GOOGLE AUTH & DRIVE
 // ═══════════════════════════════════════════════
+// Track whether we have an active token
+let hasToken = false;
+
 function gapiLoaded(){
   gapi.load('client', async ()=>{
     try{
       await gapi.client.init({apiKey:API_KEY, discoveryDocs:['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']});
       tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id:CLIENT_ID, scope:SCOPES,
+        client_id: CLIENT_ID,
+        scope: SCOPES,
         callback: async r=>{
-          if(r.error){ showAuth('Sign-in failed. Please try again.'); return; }
-          localStorage.setItem('ledger_token', JSON.stringify(gapi.client.getToken()));
+          if(r.error){
+            console.error('Token error:', r);
+            showAuth('Sign-in failed. Please try again.');
+            return;
+          }
+          hasToken = true;
+          // Remember the user has signed in before (not the token itself)
+          localStorage.setItem('ledger_signed_in','1');
           await connectDrive();
         }
       });
-      gapiOk=true;
-      const stored=localStorage.getItem('ledger_token');
-      if(stored){
-        try{ gapi.client.setToken(JSON.parse(stored)); await connectDrive(); }
-        catch(e){ localStorage.removeItem('ledger_token'); showAuth(); }
-      } else { showAuth(); }
-    } catch(e){ console.error(e); showAuth('Could not load Google API.'); }
+      gapiOk = true;
+
+      // If user has signed in before, try a silent token refresh (no popup)
+      const wasSignedIn = localStorage.getItem('ledger_signed_in');
+      if(wasSignedIn){
+        showLoad('Signing in…');
+        // prompt:'' means silent - uses existing Google session, no popup
+        tokenClient.requestAccessToken({prompt:''});
+      } else {
+        showAuth();
+      }
+    } catch(e){
+      console.error('GAPI init error:', e);
+      showAuth('Could not load Google API. Check your connection.');
+    }
   });
 }
 function gsiLoaded(){}
@@ -404,15 +422,19 @@ function gsiLoaded(){}
 function signIn(){
   if(!gapiOk){ $id('authMsg').textContent='Still loading, please wait…'; return; }
   $id('authMsg').textContent='Opening sign-in…';
-  tokenClient.requestAccessToken({prompt:'consent'});
+  // prompt:'select_account' lets user pick account, consent if needed
+  tokenClient.requestAccessToken({prompt:'select_account'});
 }
+
 function signOut(){
   if(!confirm('Sign out? Your data is saved to Google Drive.')) return;
-  try{ google.accounts.oauth2.revoke(gapi.client.getToken().access_token,()=>{}); }catch(e){}
+  try{ google.accounts.oauth2.revoke(gapi.client.getToken()?.access_token,()=>{}); }catch(e){}
   gapi.client.setToken(null);
-  localStorage.removeItem('ledger_token');
+  hasToken = false;
+  localStorage.removeItem('ledger_signed_in');
   $id('appWrap').style.display='none';
   $id('authWrap').style.display='flex';
+  hideLoad();
 }
 
 function showLoad(t){ $id('loadWrap').style.display='flex'; $id('loadTxt').textContent=(t||'LOADING').toUpperCase(); }
@@ -447,10 +469,22 @@ async function connectDrive(){
     setSyncBtn('ok','● Saved');
     render();
   } catch(e){
-    console.error(e);
-    localStorage.removeItem('ledger_token');
-    gapi.client.setToken(null);
-    showAuth('Session expired. Please sign in again.');
+    console.error('Drive connect error:', e);
+    const status = e?.result?.error?.status || e?.status || '';
+    if(status === 'UNAUTHENTICATED' || status === 401 || String(e).includes('401')){
+      // Token expired - try silent refresh
+      hasToken = false;
+      gapi.client.setToken(null);
+      if(gapiOk && tokenClient){
+        showLoad('Refreshing session…');
+        tokenClient.requestAccessToken({prompt:''});
+      } else {
+        showAuth('Please sign in again.');
+      }
+    } else {
+      // Other error (network, etc) - show auth screen
+      showAuth('Could not connect to Google Drive. Please try again.');
+    }
   }
 }
 
@@ -460,7 +494,16 @@ async function writeDrive(){
   try{
     await gapi.client.request({path:`/upload/drive/v3/files/${fileId}`,method:'PATCH',params:{uploadType:'media'},headers:{'Content-Type':'application/json'},body:JSON.stringify(D,null,2)});
     setSyncBtn('ok','● Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
-  } catch(e){ setSyncBtn('','● Save failed'); console.error(e); }
+  } catch(e){
+    console.error('Write error:', e);
+    const status = e?.result?.error?.status || '';
+    if(status === 'UNAUTHENTICATED' || String(e).includes('401')){
+      // Silently refresh token and retry
+      if(gapiOk && tokenClient) tokenClient.requestAccessToken({prompt:''});
+    } else {
+      setSyncBtn('','● Save failed');
+    }
+  }
 }
 
 async function save(){ await writeDrive(); }
