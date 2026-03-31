@@ -130,6 +130,10 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 
 .sec{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin:24px 0 12px;display:flex;align-items:center;gap:10px;}
 .sec::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* Date input dark styling */
+input[type="date"]{color-scheme:dark;}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 </style>
 </head>
 <body>
@@ -270,6 +274,17 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
     <h2 id="incomeModalTitle">Add Income</h2>
     <div class="field"><label>Source</label><input id="incSrc" placeholder="e.g. Salary, Freelance, Dividends…"></div>
     <div class="field"><label>Amount (£)</label><input type="number" id="incAmt" placeholder="0.00" step="0.01"></div>
+    <div class="field"><label>Date</label><input type="date" id="incDate"></div>
+    <div class="field"><label>Repeats</label>
+      <select id="incRepeat">
+        <option value="none">Does not repeat</option>
+        <option value="monthly">Monthly</option>
+        <option value="quarterly">Every 3 months</option>
+        <option value="biannually">Every 6 months</option>
+        <option value="annually">Annually</option>
+      </select>
+    </div>
+    <div id="incRepeatNote" style="display:none;font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:6px;"></div>
     <div class="mbtns">
       <button class="mbtn-g" onclick="closeIncome()">Cancel</button>
       <button class="mbtn-d" id="incDelBtn" style="display:none" onclick="deleteIncome()">Delete</button>
@@ -300,6 +315,17 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
       </select>
     </div>
     <div class="field"><label>Amount (£)</label><input type="number" id="catAmt" placeholder="0.00" step="0.01"></div>
+    <div class="field"><label>Date</label><input type="date" id="catDate"></div>
+    <div class="field"><label>Repeats</label>
+      <select id="catRepeat">
+        <option value="none">Does not repeat</option>
+        <option value="monthly">Monthly</option>
+        <option value="quarterly">Every 3 months</option>
+        <option value="biannually">Every 6 months</option>
+        <option value="annually">Annually</option>
+      </select>
+    </div>
+    <div id="catRepeatNote" style="display:none;font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:6px;"></div>
     <div class="mbtns">
       <button class="mbtn-g" onclick="closeCat()">Cancel</button>
       <button class="mbtn-d" id="catDelBtn" style="display:none" onclick="deleteCat()">Delete</button>
@@ -473,12 +499,24 @@ function buildMonthStrip(){
 }
 
 function renderStats(){
-  const sv=saved(activeMonth);
-  const inc=totalIncome(activeMonth);
+  const sv=savedEff(activeMonth);
+  const inc=totalIncomeEff(activeMonth);
   const rate=inc>0?Math.round(sv/inc*100):0;
   const [y]=activeMonth.split('-');
-  const yearSaved=Object.keys(D.months).filter(k=>k.startsWith(y)).reduce((s,k)=>s+saved(k),0);
-  const monthCount=Object.keys(D.months).filter(k=>k.startsWith(y)&&(totalIncome(k)||totalSpending(k))).length;
+  // Get all months that have any data (direct or from templates)
+  const allMonthKeys=new Set([...Object.keys(D.months),...(D.templates||[]).map(t=>t.startMonth)]);
+  // Also add all months the templates generate
+  (D.templates||[]).forEach(t=>{
+    const interval=REPEAT_MONTHS[t.repeat]||0;
+    if(!interval) return;
+    const [sy,sm]=t.startMonth.split('-').map(Number);
+    for(let i=0;i<=24;i+=interval){
+      const d=new Date(sy,sm-1+i,1);
+      allMonthKeys.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+    }
+  });
+  const yearSaved=[...allMonthKeys].filter(k=>k.startsWith(y)).reduce((s,k)=>s+savedEff(k),0);
+  const monthCount=[...allMonthKeys].filter(k=>k.startsWith(y)&&(totalIncomeEff(k)||totalSpendingEff(k))).length;
   const netWorth=D.settings.accounts.reduce((s,a)=>s+a.balance,0);
 
   const el=$id('sSaved'); el.textContent=fmt(sv); el.className='stat-val '+(sv>=0?'g':'r');
@@ -507,7 +545,7 @@ function renderChart(){
   const months=[];
   for(let m=1;m<=12;m++){
     const k=`${y}-${String(m).padStart(2,'0')}`;
-    months.push({k,lbl:new Date(+y,m-1,1).toLocaleString('en-GB',{month:'short'}),inc:totalIncome(k),sp:totalSpending(k),sv:saved(k)});
+    months.push({k,lbl:new Date(+y,m-1,1).toLocaleString('en-GB',{month:'short'}),inc:totalIncomeEff(k),sp:totalSpendingEff(k),sv:savedEff(k)});
   }
   const maxVal=Math.max(...months.map(m=>Math.max(m.inc,m.sp)),1);
 
@@ -541,35 +579,37 @@ function renderChart(){
 function renderIncomPanel(){
   const rows=$id('incomeRows'); rows.innerHTML='';
   const month=getMonth(activeMonth);
-  month.income.forEach(r=>{
+  getEffectiveEntries(activeMonth,'income').forEach(r=>{
     const row=document.createElement('div'); row.className='cat-row';
+    const incDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''; const incRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
     row.innerHTML=`<div class="cat-icon">💰</div>
-      <div class="cat-name">${esc(r.src)}</div>
+      <div class="cat-name">${esc(r.src)}${incRepeatBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${incDateStr}</span></div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--green);cursor:pointer;" onclick='editIncome("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
   if(!month.income.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No income added yet. Tap + to add.</div>';
   }
-  $id('incomeTotal').textContent=fmt(totalIncome(activeMonth));
+  $id('incomeTotal').textContent=fmt(totalIncomeEff(activeMonth));
 }
 
 function renderSpendPanel(){
   const rows=$id('catRows'); rows.innerHTML='';
   const month=getMonth(activeMonth);
-  month.spending.forEach(r=>{
+  getEffectiveEntries(activeMonth,'spending').forEach(r=>{
     const row=document.createElement('div'); row.className='cat-row';
     const icon=r.cat.split(' ')[0];
     const name=r.cat.split(' ').slice(1).join(' ');
+    const catDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''; const catRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
     row.innerHTML=`<div class="cat-icon">${icon}</div>
-      <div class="cat-name">${esc(name)}</div>
+      <div class="cat-name">${esc(name)}${catRepeatBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${catDateStr}</span></div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--red);cursor:pointer;" onclick='editCat("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
   if(!month.spending.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No spending added yet. Tap + to add.</div>';
   }
-  $id('spendTotal').textContent=fmt(totalSpending(activeMonth));
+  $id('spendTotal').textContent=fmt(totalSpendingEff(activeMonth));
 }
 
 function renderYearTable(){
@@ -578,9 +618,9 @@ function renderYearTable(){
   const months=[];
   for(let m=1;m<=12;m++){
     const k=`${y}-${String(m).padStart(2,'0')}`;
-    months.push({k,lbl:new Date(+y,m-1,1).toLocaleString('en-GB',{month:'long'}),inc:totalIncome(k),sp:totalSpending(k),sv:saved(k)});
+    months.push({k,lbl:new Date(+y,m-1,1).toLocaleString('en-GB',{month:'long'}),inc:totalIncomeEff(k),sp:totalSpendingEff(k),sv:savedEff(k)});
   }
-  const yearTotal=months.reduce((s,m)=>s+m.sv,0);
+  const yearTotal=[...allMonthKeys].filter(k=>k.startsWith(y)).reduce((s,k)=>s+savedEff(k),0);
   tbl.innerHTML=`<thead><tr>
     <th>Month</th><th>Income</th><th>Spending</th><th style="text-align:right">Saved</th>
   </tr></thead><tbody>`+
@@ -600,45 +640,99 @@ function renderYearTable(){
 // ═══════════════════════════════════════════════
 // INCOME MODAL
 // ═══════════════════════════════════════════════
+function showRepeatNote(selectEl, noteEl){
+  const val=selectEl.value;
+  if(val&&val!=='none'){ noteEl.style.display=''; noteEl.textContent='↻ '+repeatLabel(val)+' from this month onwards'; }
+  else noteEl.style.display='none';
+}
+
 function addIncome(){
   editingIncome=null;
   $id('incomeModalTitle').textContent='Add Income';
   $id('incSrc').value=''; $id('incAmt').value='';
+  $id('incDate').value=defaultDateForMonth(activeMonth);
+  $id('incRepeat').value='none'; $id('incRepeatNote').style.display='none';
   $id('incDelBtn').style.display='none';
   $id('incomeOv').classList.add('on');
   setTimeout(()=>$id('incSrc').focus(),100);
 }
+
 function editIncome(id){
+  const generated=id.includes('_gen_');
   const month=getMonth(activeMonth);
+  if(generated){
+    const templateId=id.split('_gen_')[0];
+    const tmpl=(D.templates||[]).find(t=>t.id===templateId);
+    editingIncome={type:'template_instance',templateId,generatedId:id};
+    $id('incomeModalTitle').textContent='Edit Recurring Income';
+    $id('incSrc').value=tmpl?tmpl.src:'';
+    $id('incAmt').value=tmpl?tmpl.amt:'';
+    $id('incDate').value=defaultDateForMonth(activeMonth);
+    $id('incRepeat').value=tmpl?tmpl.repeat:'monthly';
+    showRepeatNote($id('incRepeat'),$id('incRepeatNote'));
+    $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Skip this month';
+    $id('incomeOv').classList.add('on'); return;
+  }
   const r=month.income.find(x=>x.id===id); if(!r) return;
-  editingIncome=id;
+  editingIncome={type:'direct',id};
   $id('incomeModalTitle').textContent='Edit Income';
   $id('incSrc').value=r.src; $id('incAmt').value=r.amt;
-  $id('incDelBtn').style.display='';
+  $id('incDate').value=r.date||defaultDateForMonth(activeMonth);
+  $id('incRepeat').value=r.repeat||'none';
+  showRepeatNote($id('incRepeat'),$id('incRepeatNote'));
+  $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Delete';
   $id('incomeOv').classList.add('on');
 }
+
 function closeIncome(){ $id('incomeOv').classList.remove('on'); }
+
 function saveIncome(){
   const src=$id('incSrc').value.trim();
   const amt=parseFloat($id('incAmt').value);
+  const date=$id('incDate').value||defaultDateForMonth(activeMonth);
+  const repeat=$id('incRepeat').value;
   if(!src||isNaN(amt)||amt<=0){ alert('Please enter a source and valid amount.'); return; }
+  if(!D.templates) D.templates=[];
+  if(!D.deleted) D.deleted=[];
   const month=getMonth(activeMonth);
-  if(editingIncome){
-    const r=month.income.find(x=>x.id===editingIncome);
-    if(r){ r.src=src; r.amt=amt; }
+  if(!editingIncome){
+    if(repeat&&repeat!=='none'){
+      D.templates.push({id:Date.now().toString(),type:'income',src,amt,repeat,startMonth:activeMonth,startDate:date});
+    } else {
+      month.income.push({id:Date.now().toString(),src,amt,date});
+    }
+  } else if(editingIncome.type==='template_instance'){
+    month.income=month.income.filter(x=>x.templateId!==editingIncome.templateId);
+    month.income.push({id:Date.now().toString(),src,amt,date,templateId:editingIncome.templateId,overrideMonth:activeMonth});
+    const tmpl=D.templates.find(t=>t.id===editingIncome.templateId);
+    if(tmpl){ tmpl.src=src; tmpl.amt=amt; tmpl.repeat=repeat; }
   } else {
-    month.income.push({id:Date.now().toString(),src,amt});
+    const r=month.income.find(x=>x.id===editingIncome.id);
+    if(r){
+      r.src=src; r.amt=amt; r.date=date; r.repeat=repeat;
+      if(repeat&&repeat!=='none'&&!r.templateId){
+        D.templates.push({id:Date.now().toString(),type:'income',src,amt,repeat,startMonth:activeMonth,startDate:date});
+        month.income=month.income.filter(x=>x.id!==r.id);
+      }
+    }
   }
   save(); closeIncome(); render();
 }
+
 function deleteIncome(){
-  if(!editingIncome||!confirm('Delete this income entry?')) return;
-  const month=getMonth(activeMonth);
-  month.income=month.income.filter(x=>x.id!==editingIncome);
+  if(!editingIncome) return;
+  if(editingIncome.type==='template_instance'){
+    if(!D.deleted) D.deleted=[];
+    D.deleted.push({templateId:editingIncome.templateId,month:activeMonth});
+  } else {
+    if(!confirm('Delete this income entry?')) return;
+    const month=getMonth(activeMonth);
+    month.income=month.income.filter(x=>x.id!==editingIncome.id);
+  }
   save(); closeIncome(); render();
 }
+$id('incRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('incRepeatNote')); });
 $id('incomeOv').addEventListener('click',e=>{ if(e.target===$id('incomeOv')) closeIncome(); });
-
 // ═══════════════════════════════════════════════
 // SPENDING MODAL
 // ═══════════════════════════════════════════════
@@ -646,41 +740,89 @@ function addCategory(){
   editingCat=null;
   $id('catModalTitle').textContent='Add Spending';
   $id('catName').value='🏠 Housing'; $id('catAmt').value='';
+  $id('catDate').value=defaultDateForMonth(activeMonth);
+  $id('catRepeat').value='none'; $id('catRepeatNote').style.display='none';
   $id('catDelBtn').style.display='none';
   $id('catOv').classList.add('on');
   setTimeout(()=>$id('catAmt').focus(),100);
 }
+
 function editCat(id){
+  const generated=id.includes('_gen_');
   const month=getMonth(activeMonth);
+  if(generated){
+    const templateId=id.split('_gen_')[0];
+    const tmpl=(D.templates||[]).find(t=>t.id===templateId);
+    editingCat={type:'template_instance',templateId,generatedId:id};
+    $id('catModalTitle').textContent='Edit Recurring Spending';
+    $id('catName').value=tmpl?tmpl.cat:'🏠 Housing';
+    $id('catAmt').value=tmpl?tmpl.amt:'';
+    $id('catDate').value=defaultDateForMonth(activeMonth);
+    $id('catRepeat').value=tmpl?tmpl.repeat:'monthly';
+    showRepeatNote($id('catRepeat'),$id('catRepeatNote'));
+    $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Skip this month';
+    $id('catOv').classList.add('on'); return;
+  }
   const r=month.spending.find(x=>x.id===id); if(!r) return;
-  editingCat=id;
+  editingCat={type:'direct',id};
   $id('catModalTitle').textContent='Edit Spending';
   $id('catName').value=r.cat; $id('catAmt').value=r.amt;
-  $id('catDelBtn').style.display='';
+  $id('catDate').value=r.date||defaultDateForMonth(activeMonth);
+  $id('catRepeat').value=r.repeat||'none';
+  showRepeatNote($id('catRepeat'),$id('catRepeatNote'));
+  $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Delete';
   $id('catOv').classList.add('on');
 }
+
 function closeCat(){ $id('catOv').classList.remove('on'); }
+
 function saveCat(){
   const cat=$id('catName').value;
   const amt=parseFloat($id('catAmt').value);
+  const date=$id('catDate').value||defaultDateForMonth(activeMonth);
+  const repeat=$id('catRepeat').value;
   if(!cat||isNaN(amt)||amt<=0){ alert('Please enter a valid amount.'); return; }
+  if(!D.templates) D.templates=[];
+  if(!D.deleted) D.deleted=[];
   const month=getMonth(activeMonth);
-  if(editingCat){
-    const r=month.spending.find(x=>x.id===editingCat);
-    if(r){ r.cat=cat; r.amt=amt; }
+  if(!editingCat){
+    if(repeat&&repeat!=='none'){
+      D.templates.push({id:Date.now().toString(),type:'spending',cat,amt,repeat,startMonth:activeMonth,startDate:date});
+    } else {
+      month.spending.push({id:Date.now().toString(),cat,amt,date});
+    }
+  } else if(editingCat.type==='template_instance'){
+    month.spending=month.spending.filter(x=>x.templateId!==editingCat.templateId);
+    month.spending.push({id:Date.now().toString(),cat,amt,date,templateId:editingCat.templateId,overrideMonth:activeMonth});
+    const tmpl=D.templates.find(t=>t.id===editingCat.templateId);
+    if(tmpl){ tmpl.cat=cat; tmpl.amt=amt; tmpl.repeat=repeat; }
   } else {
-    month.spending.push({id:Date.now().toString(),cat,amt});
+    const r=month.spending.find(x=>x.id===editingCat.id);
+    if(r){
+      r.cat=cat; r.amt=amt; r.date=date; r.repeat=repeat;
+      if(repeat&&repeat!=='none'&&!r.templateId){
+        D.templates.push({id:Date.now().toString(),type:'spending',cat,amt,repeat,startMonth:activeMonth,startDate:date});
+        month.spending=month.spending.filter(x=>x.id!==r.id);
+      }
+    }
   }
   save(); closeCat(); render();
 }
+
 function deleteCat(){
-  if(!editingCat||!confirm('Delete this spending entry?')) return;
-  const month=getMonth(activeMonth);
-  month.spending=month.spending.filter(x=>x.id!==editingCat);
+  if(!editingCat) return;
+  if(editingCat.type==='template_instance'){
+    if(!D.deleted) D.deleted=[];
+    D.deleted.push({templateId:editingCat.templateId,month:activeMonth});
+  } else {
+    if(!confirm('Delete this spending entry?')) return;
+    const month=getMonth(activeMonth);
+    month.spending=month.spending.filter(x=>x.id!==editingCat.id);
+  }
   save(); closeCat(); render();
 }
+$id('catRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('catRepeatNote')); });
 $id('catOv').addEventListener('click',e=>{ if(e.target===$id('catOv')) closeCat(); });
-
 // ═══════════════════════════════════════════════
 // SETTINGS MODAL
 // ═══════════════════════════════════════════════
