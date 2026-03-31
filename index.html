@@ -880,10 +880,12 @@ function saveIncome(){
   if(!src||isNaN(amt)||amt<=0){ alert('Please enter a source and valid amount.'); return; }
   if(!D.templates) D.templates=[];
   if(!D.deleted) D.deleted=[];
-  const month=getMonth(activeMonth);
+  // Derive the month from the entered date, not the active tab
+  const targetMonth=date?date.slice(0,7):activeMonth;
+  const month=getMonth(targetMonth);
   if(!editingIncome){
     if(repeat&&repeat!=='none'){
-      D.templates.push({id:Date.now().toString(),type:'income',src,amt,repeat,startMonth:activeMonth,startDate:date});
+      D.templates.push({id:Date.now().toString(),type:'income',src,amt,repeat,startMonth:targetMonth,startDate:date});
     } else {
       month.income.push({id:Date.now().toString(),src,amt,date});
     }
@@ -902,6 +904,9 @@ function saveIncome(){
       }
     }
   }
+  // Switch to the month the transaction was saved to
+  const savedDate=$id('incDate').value;
+  if(savedDate&&!editingIncome) activeMonth=savedDate.slice(0,7);
   save(); closeIncome(); render();
 }
 
@@ -970,10 +975,12 @@ function saveCat(){
   if(!cat||isNaN(amt)||amt<=0){ alert('Please enter a valid amount.'); return; }
   if(!D.templates) D.templates=[];
   if(!D.deleted) D.deleted=[];
-  const month=getMonth(activeMonth);
+  // Derive the month from the entered date, not the active tab
+  const targetMonth=date?date.slice(0,7):activeMonth;
+  const month=getMonth(targetMonth);
   if(!editingCat){
     if(repeat&&repeat!=='none'){
-      D.templates.push({id:Date.now().toString(),type:'spending',cat,amt,repeat,startMonth:activeMonth,startDate:date});
+      D.templates.push({id:Date.now().toString(),type:'spending',cat,amt,repeat,startMonth:targetMonth,startDate:date});
     } else {
       month.spending.push({id:Date.now().toString(),cat,amt,date});
     }
@@ -992,6 +999,9 @@ function saveCat(){
       }
     }
   }
+  // Switch to the month the transaction was saved to
+  const savedCatDate=$id('catDate').value;
+  if(savedCatDate&&!editingCat) activeMonth=savedCatDate.slice(0,7);
   save(); closeCat(); render();
 }
 
