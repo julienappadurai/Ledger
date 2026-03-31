@@ -362,10 +362,25 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div class="field"><label>Amount (£)</label><input type="number" id="recAmt" step="0.01"></div>
     <div class="field"><label>Repeats</label>
       <select id="recRepeat">
-        <option value="monthly">Monthly</option>
-        <option value="quarterly">Every 3 months</option>
-        <option value="biannually">Every 6 months</option>
-        <option value="annually">Annually</option>
+        <optgroup label="── Fixed interval ──">
+          <option value="monthly">Monthly (same date)</option>
+          <option value="quarterly">Every 3 months</option>
+          <option value="biannually">Every 6 months</option>
+          <option value="annually">Annually</option>
+        </optgroup>
+        <optgroup label="── Day of month ──">
+          <option value="day_1">1st of every month</option>
+          <option value="day_8">8th of every month</option>
+          <option value="day_15">15th of every month</option>
+          <option value="day_last">Last day of every month</option>
+          <option value="day_custom">Custom day of month…</option>
+        </optgroup>
+        <optgroup label="── Working days ──">
+          <option value="work_1">1st working day of month</option>
+          <option value="work_2">2nd working day of month</option>
+          <option value="work_3">3rd working day of month</option>
+          <option value="work_last">Last working day of month</option>
+        </optgroup>
       </select>
     </div>
     <div class="field"><label>Starting from</label><input type="month" id="recStartMonth"></div>
@@ -419,13 +434,29 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div class="field"><label>Repeats</label>
       <select id="incRepeat">
         <option value="none">Does not repeat</option>
-        <option value="monthly">Monthly</option>
-        <option value="quarterly">Every 3 months</option>
-        <option value="biannually">Every 6 months</option>
-        <option value="annually">Annually</option>
+        <optgroup label="── Fixed interval ──">
+          <option value="monthly">Monthly (same date)</option>
+          <option value="quarterly">Every 3 months</option>
+          <option value="biannually">Every 6 months</option>
+          <option value="annually">Annually</option>
+        </optgroup>
+        <optgroup label="── Day of month ──">
+          <option value="day_1">1st of every month</option>
+          <option value="day_8">8th of every month</option>
+          <option value="day_15">15th of every month</option>
+          <option value="day_last">Last day of every month</option>
+          <option value="day_custom">Custom day of month…</option>
+        </optgroup>
+        <optgroup label="── Working days ──">
+          <option value="work_1">1st working day of month</option>
+          <option value="work_2">2nd working day of month</option>
+          <option value="work_3">3rd working day of month</option>
+          <option value="work_last">Last working day of month</option>
+        </optgroup>
       </select>
     </div>
     <div id="incRepeatNote" style="display:none;font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:6px;"></div>
+    <div class="field" id="incCustomDayField" style="display:none;"><label>Day of month (1–28)</label><input type="number" id="incCustomDay" min="1" max="28" placeholder="e.g. 8"></div>
     <div class="mbtns">
       <button class="mbtn-g" onclick="closeIncome()">Cancel</button>
       <button class="mbtn-d" id="incDelBtn" style="display:none" onclick="deleteIncome()">Delete</button>
@@ -461,13 +492,29 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div class="field"><label>Repeats</label>
       <select id="catRepeat">
         <option value="none">Does not repeat</option>
-        <option value="monthly">Monthly</option>
-        <option value="quarterly">Every 3 months</option>
-        <option value="biannually">Every 6 months</option>
-        <option value="annually">Annually</option>
+        <optgroup label="── Fixed interval ──">
+          <option value="monthly">Monthly (same date)</option>
+          <option value="quarterly">Every 3 months</option>
+          <option value="biannually">Every 6 months</option>
+          <option value="annually">Annually</option>
+        </optgroup>
+        <optgroup label="── Day of month ──">
+          <option value="day_1">1st of every month</option>
+          <option value="day_8">8th of every month</option>
+          <option value="day_15">15th of every month</option>
+          <option value="day_last">Last day of every month</option>
+          <option value="day_custom">Custom day of month…</option>
+        </optgroup>
+        <optgroup label="── Working days ──">
+          <option value="work_1">1st working day of month</option>
+          <option value="work_2">2nd working day of month</option>
+          <option value="work_3">3rd working day of month</option>
+          <option value="work_last">Last working day of month</option>
+        </optgroup>
       </select>
     </div>
     <div id="catRepeatNote" style="display:none;font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:6px;"></div>
+    <div class="field" id="catCustomDayField" style="display:none;"><label>Day of month (1–28)</label><input type="number" id="catCustomDay" min="1" max="28" placeholder="e.g. 8"></div>
     <div class="mbtns">
       <button class="mbtn-g" onclick="closeCat()">Cancel</button>
       <button class="mbtn-d" id="catDelBtn" style="display:none" onclick="deleteCat()">Delete</button>
@@ -950,10 +997,15 @@ function renderYearTable(){
 // ═══════════════════════════════════════════════
 // INCOME MODAL
 // ═══════════════════════════════════════════════
-function showRepeatNote(selectEl, noteEl){
+function showRepeatNote(selectEl, noteEl, customDayFieldId){
   const val=selectEl.value;
   if(val&&val!=='none'){ noteEl.style.display=''; noteEl.textContent='↻ '+repeatLabel(val)+' from this month onwards'; }
   else noteEl.style.display='none';
+  // Show/hide custom day input
+  if(customDayFieldId){
+    const fld=$id(customDayFieldId);
+    if(fld) fld.style.display=(val==='day_custom')?'':'none';
+  }
 }
 
 function addIncome(){
@@ -980,7 +1032,7 @@ function editIncome(id){
     $id('incCat').value=tmpl?tmpl.cat||'💼 Income':'💼 Income';
     $id('incDate').value=defaultDateForMonth(activeMonth);
     $id('incRepeat').value=tmpl?tmpl.repeat:'monthly';
-    showRepeatNote($id('incRepeat'),$id('incRepeatNote'));
+    showRepeatNote($id('incRepeat'),$id('incRepeatNote'),'incCustomDayField');
     $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Skip this month';
     $id('incomeOv').classList.add('on'); return;
   }
@@ -991,7 +1043,7 @@ function editIncome(id){
   $id('incCat').value=r.cat||'💼 Income';
   $id('incDate').value=r.date||defaultDateForMonth(activeMonth);
   $id('incRepeat').value=r.repeat||'none';
-  showRepeatNote($id('incRepeat'),$id('incRepeatNote'));
+  showRepeatNote($id('incRepeat'),$id('incRepeatNote'),'incCustomDayField');
   $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Delete';
   $id('incomeOv').classList.add('on');
 }
@@ -1001,8 +1053,14 @@ function closeIncome(){ $id('incomeOv').classList.remove('on'); }
 function saveIncome(){
   const src=$id('incSrc').value.trim();
   const amt=parseFloat($id('incAmt').value);
-  const date=$id('incDate').value||defaultDateForMonth(activeMonth);
+  let date=$id('incDate').value||defaultDateForMonth(activeMonth);
   const repeat=$id('incRepeat').value;
+  // For day_custom, overwrite the day part of startDate with the custom day
+  if(repeat==='day_custom'){
+    const customDay=parseInt($id('incCustomDay')?.value)||1;
+    const [y,m]=date.split('-');
+    date=`${y}-${m}-${String(Math.min(Math.max(customDay,1),28)).padStart(2,'0')}`;
+  }
   if(!src||isNaN(amt)||amt<=0){ alert('Please enter a source and valid amount.'); return; }
   if(!D.templates) D.templates=[];
   if(!D.deleted) D.deleted=[];
@@ -1048,7 +1106,7 @@ function deleteIncome(){
   }
   save(); closeIncome(); render();
 }
-$id('incRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('incRepeatNote')); });
+$id('incRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('incRepeatNote'),'incCustomDayField'); });
 $id('incomeOv').addEventListener('click',e=>{ if(e.target===$id('incomeOv')) closeIncome(); });
 // ═══════════════════════════════════════════════
 // SPENDING MODAL
@@ -1078,7 +1136,7 @@ function editCat(id){
     $id('catAmt').value=tmpl?tmpl.amt:'';
     $id('catDate').value=defaultDateForMonth(activeMonth);
     $id('catRepeat').value=tmpl?tmpl.repeat:'monthly';
-    showRepeatNote($id('catRepeat'),$id('catRepeatNote'));
+    showRepeatNote($id('catRepeat'),$id('catRepeatNote'),'catCustomDayField');
     $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Skip this month';
     $id('catOv').classList.add('on'); return;
   }
@@ -1089,7 +1147,7 @@ function editCat(id){
   $id('catName').value=r.cat; $id('catAmt').value=r.amt;
   $id('catDate').value=r.date||defaultDateForMonth(activeMonth);
   $id('catRepeat').value=r.repeat||'none';
-  showRepeatNote($id('catRepeat'),$id('catRepeatNote'));
+  showRepeatNote($id('catRepeat'),$id('catRepeatNote'),'catCustomDayField');
   $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Delete';
   $id('catOv').classList.add('on');
 }
@@ -1147,7 +1205,7 @@ function deleteCat(){
   }
   save(); closeCat(); render();
 }
-$id('catRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('catRepeatNote')); });
+$id('catRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('catRepeatNote'),'catCustomDayField'); });
 $id('catOv').addEventListener('click',e=>{ if(e.target===$id('catOv')) closeCat(); });
 // ═══════════════════════════════════════════════
 // SETTINGS MODAL
@@ -1203,8 +1261,84 @@ function defaultDateForMonth(k){
 
 const REPEAT_MONTHS={none:0,monthly:1,quarterly:3,biannually:6,annually:12};
 
+// Working-day helpers (ignores UK bank holidays for simplicity; Mon-Fri only)
+function isWorkingDay(d){const day=d.getDay();return day!==0&&day!==6;}
+
+function nthWorkingDay(year,month,n){
+  // month is 1-based
+  const days=[];
+  const daysInMo=new Date(year,month,0).getDate();
+  for(let d=1;d<=daysInMo;d++){
+    const dt=new Date(year,month-1,d);
+    if(isWorkingDay(dt)) days.push(d);
+    if(n>0&&days.length===n) return d;
+  }
+  return days[days.length-1]; // last working day
+}
+
+function lastWorkingDay(year,month){
+  const daysInMo=new Date(year,month,0).getDate();
+  for(let d=daysInMo;d>=1;d--){
+    if(isWorkingDay(new Date(year,month-1,d))) return d;
+  }
+  return daysInMo;
+}
+
 function repeatLabel(r){
-  return {none:'',monthly:'Repeats monthly',quarterly:'Repeats every 3 months',biannually:'Repeats every 6 months',annually:'Repeats annually'}[r]||'';
+  const labels={
+    none:'', monthly:'Monthly (same date)',
+    quarterly:'Every 3 months', biannually:'Every 6 months', annually:'Annually',
+    day_1:'1st of month', day_8:'8th of month', day_15:'15th of month',
+    day_last:'Last day of month', day_custom:'Custom day of month',
+    work_1:'1st working day', work_2:'2nd working day',
+    work_3:'3rd working day', work_last:'Last working day'
+  };
+  return labels[r]||r||'';
+}
+
+// Does this template apply to month k?
+function repeatAppliesToMonth(repeat, startMonth, k){
+  const interval=REPEAT_MONTHS[repeat];
+  if(interval!==undefined&&interval>0){
+    // Fixed interval repeats
+    const [sy,sm]=startMonth.split('-').map(Number);
+    const [ty,tm]=k.split('-').map(Number);
+    const diff=(ty-sy)*12+(tm-sm);
+    return diff>=0&&diff%interval===0;
+  }
+  // Day-of-month and working-day types repeat every month
+  if(repeat&&repeat!=='none'){
+    const [sy,sm]=startMonth.split('-').map(Number);
+    const [ty,tm]=k.split('-').map(Number);
+    const diff=(ty-sy)*12+(tm-sm);
+    return diff>=0;
+  }
+  return false;
+}
+
+// Calculate the actual day number for a template in a given month
+function repeatDayForMonth(tmpl, k){
+  const [ty,tm]=k.split('-').map(Number);
+  const daysInMo=new Date(ty,tm,0).getDate();
+  const r=tmpl.repeat;
+
+  if(r==='day_1') return 1;
+  if(r==='day_8') return 8;
+  if(r==='day_15') return 15;
+  if(r==='day_last') return daysInMo;
+  if(r==='day_custom'){
+    // Use the day from startDate
+    const d=parseInt((tmpl.startDate||'').split('-')[2])||1;
+    return Math.min(d,daysInMo);
+  }
+  if(r==='work_1') return nthWorkingDay(ty,tm,1);
+  if(r==='work_2') return nthWorkingDay(ty,tm,2);
+  if(r==='work_3') return nthWorkingDay(ty,tm,3);
+  if(r==='work_last') return lastWorkingDay(ty,tm);
+
+  // Default: same day as startDate
+  const od=parseInt((tmpl.startDate||'').split('-')[2])||1;
+  return Math.min(od,daysInMo);
 }
 
 function totalIncomeEff(k){ return getEffectiveEntries(k,'income').reduce((s,r)=>s+r.amt,0); }
@@ -1213,12 +1347,7 @@ function savedEff(k){ return totalIncomeEff(k)-totalSpendingEff(k); }
 
 function templateAppliesTo(tmpl, k){
   if(!tmpl.repeat||tmpl.repeat==='none') return false;
-  const interval=REPEAT_MONTHS[tmpl.repeat];
-  if(!interval) return false;
-  const [sy,sm]=tmpl.startMonth.split('-').map(Number);
-  const [ty,tm]=k.split('-').map(Number);
-  const diff=(ty-sy)*12+(tm-sm);
-  return diff>=0 && diff%interval===0;
+  return repeatAppliesToMonth(tmpl.repeat, tmpl.startMonth, k);
 }
 
 function getEffectiveEntries(k, type){
@@ -1227,10 +1356,7 @@ function getEffectiveEntries(k, type){
   const deletedIds=new Set((D.deleted||[]).filter(d=>d.month===k).map(d=>d.templateId));
   (D.templates||[]).filter(t=>t.type===type&&templateAppliesTo(t,k)).forEach(tmpl=>{
     if(!overriddenIds.has(tmpl.id+'_'+k)&&!deletedIds.has(tmpl.id)){
-      const [oy,om,od]=tmpl.startDate.split('-').map(Number);
-      const [ty,tm]=k.split('-').map(Number);
-      const daysInMonth=new Date(ty,tm,0).getDate();
-      const day=Math.min(od,daysInMonth);
+      const day=repeatDayForMonth(tmpl,k);
       const date=`${k}-${String(day).padStart(2,'0')}`;
       direct.push({id:tmpl.id+'_gen_'+k,src:tmpl.src,cat:tmpl.cat,amt:tmpl.amt,date,templateId:tmpl.id,generated:true});
     }
