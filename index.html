@@ -131,6 +131,29 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .sec{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin:24px 0 12px;display:flex;align-items:center;gap:10px;}
 .sec::after{content:'';flex:1;height:1px;background:var(--border);}
 
+/* Nav active state */
+.nav-btn.on{background:var(--gold);color:var(--bg);border-color:var(--gold);}
+.nav-btn.on:hover{background:var(--gold2);border-color:var(--gold2);color:var(--bg);}
+
+/* Recurring list */
+.rec-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:border-color .15s;}
+.rec-card:hover{border-color:var(--gold);}
+.rec-icon{font-size:20px;width:36px;text-align:center;flex-shrink:0;}
+.rec-info{flex:1;min-width:0;}
+.rec-name{font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rec-meta{font-size:11px;color:var(--muted);font-family:"DM Mono",monospace;margin-top:3px;}
+.rec-amt{font-family:"Playfair Display",serif;font-size:18px;flex-shrink:0;}
+.rec-amt.inc{color:var(--green);}
+.rec-amt.sp{color:var(--red);}
+.rec-badge{font-family:"DM Mono",monospace;font-size:9px;padding:2px 7px;border-radius:4px;letter-spacing:1px;background:rgba(201,168,76,.12);color:var(--gold);margin-left:8px;}
+.rec-empty{text-align:center;padding:28px;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);}
+
+/* Recurring edit modal */
+.month-override-list{max-height:200px;overflow-y:auto;}
+.override-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.override-row:last-child{border-bottom:none;}
+.override-month{font-family:"DM Mono",monospace;font-size:11px;color:var(--muted);}
+
 /* Date input dark styling */
 input[type="date"]{color-scheme:dark;}
 input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
@@ -186,12 +209,16 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   <header>
     <div class="logo">Ledger <small>MONTHLY SAVINGS</small></div>
     <div class="hbtns">
+      <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
+      <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
       <button class="hbtn" id="syncBtn" onclick="manualSync()">● Connecting…</button>
       <button class="hbtn" onclick="openSettings()">⚙ Settings</button>
       <button class="hbtn" onclick="signOut()">⏻ Sign out</button>
     </div>
   </header>
 
+  <!-- DASHBOARD VIEW -->
+  <div id="viewDashboard">
   <!-- Month strip -->
   <div class="month-strip" id="monthStrip"></div>
 
@@ -267,7 +294,64 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <table class="year-table" id="yearTable"></table>
   </div>
 
+  </div><!-- end viewDashboard -->
+
+  <!-- RECURRING VIEW -->
+  <div id="viewRecurring" style="display:none;">
+    <div class="sec" style="margin-top:0;">Recurring Income</div>
+    <div id="recurringIncomeList"></div>
+
+    <div class="sec">Recurring Spending</div>
+    <div id="recurringSpendList"></div>
+
+    <div style="margin-top:24px;font-size:12px;color:var(--muted);text-align:center;line-height:1.8;">
+      Tap any recurring transaction to edit it.<br>
+      Changes apply to all future months unless you override a specific month from the Dashboard.
+    </div>
+  </div>
+
 </div>
+</div>
+
+<!-- RECURRING EDIT MODAL -->
+<div class="ov" id="recOv">
+  <div class="modal" style="max-width:480px;">
+    <h2 id="recModalTitle">Edit Recurring</h2>
+    <div id="recModalType" style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:16px;"></div>
+
+    <div class="field"><label>Name / Source</label><input id="recName" placeholder="e.g. Salary"></div>
+    <div class="field" id="recCatField" style="display:none;"><label>Category</label>
+      <select id="recCat">
+        <option>🏠 Housing</option><option>🍔 Food</option><option>🚗 Transport</option>
+        <option>💡 Utilities</option><option>🛒 Shopping</option><option>🎮 Entertainment</option>
+        <option>💊 Health</option><option>🎓 Education</option><option>✈️ Holidays</option>
+        <option>👨‍👩‍👧 Family</option><option>💳 Debt Payments</option><option>📈 Investments</option>
+        <option>🔮 Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Amount (£)</label><input type="number" id="recAmt" step="0.01"></div>
+    <div class="field"><label>Repeats</label>
+      <select id="recRepeat">
+        <option value="monthly">Monthly</option>
+        <option value="quarterly">Every 3 months</option>
+        <option value="biannually">Every 6 months</option>
+        <option value="annually">Annually</option>
+      </select>
+    </div>
+    <div class="field"><label>Starting from</label><input type="month" id="recStartMonth"></div>
+
+    <div style="margin-top:4px;">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Month Overrides</div>
+      <div id="recOverrideList" class="month-override-list"></div>
+      <div id="recNoOverrides" style="font-size:12px;color:var(--muted);padding:6px 0;">No overrides — all months use the default amount above.</div>
+    </div>
+
+    <div class="mbtns">
+      <button class="mbtn-g" onclick="closeRecModal()">Cancel</button>
+      <button class="mbtn-d" onclick="deleteRecurring()">Delete All</button>
+      <button class="mbtn-p" onclick="saveRecurring()">Save Changes</button>
+    </div>
+  </div>
 </div>
 
 <!-- SETTINGS MODAL -->
@@ -1107,8 +1191,188 @@ function getEffectiveEntries(k, type){
   });
   return direct;
 }
-</script>
 
+// ═══════════════════════════════════════════════
+// VIEW SWITCHING
+// ═══════════════════════════════════════════════
+function showView(view){
+  $id('viewDashboard').style.display = view==='dashboard' ? '' : 'none';
+  $id('viewRecurring').style.display = view==='recurring' ? '' : 'none';
+  $id('navDashboard').classList.toggle('on', view==='dashboard');
+  $id('navRecurring').classList.toggle('on', view==='recurring');
+  if(view==='recurring') renderRecurring();
+}
+
+// ═══════════════════════════════════════════════
+// RECURRING VIEW
+// ═══════════════════════════════════════════════
+function renderRecurring(){
+  const templates = D.templates||[];
+  const income  = templates.filter(t=>t.type==='income');
+  const spending = templates.filter(t=>t.type==='spending');
+
+  renderRecList('recurringIncomeList', income, 'income');
+  renderRecList('recurringSpendList', spending, 'spending');
+}
+
+function renderRecList(containerId, templates, type){
+  const el = $id(containerId);
+  el.innerHTML = '';
+  if(!templates.length){
+    el.innerHTML = `<div class="rec-empty">No recurring ${type} set up yet.<br>Add one from the Dashboard using the + button and set it to repeat.</div>`;
+    return;
+  }
+  templates.forEach(tmpl=>{
+    const card = document.createElement('div');
+    card.className = 'rec-card';
+    const icon   = type==='income' ? '💰' : (tmpl.cat||'🔮').split(' ')[0];
+    const name   = type==='income' ? tmpl.src : (tmpl.cat||'').split(' ').slice(1).join(' ');
+    const badge  = {monthly:'Monthly',quarterly:'Every 3 months',biannually:'Every 6 months',annually:'Annually'}[tmpl.repeat]||tmpl.repeat;
+    const overrides = getOverridesForTemplate(tmpl.id);
+    const overrideTxt = overrides.length ? ` · ${overrides.length} override${overrides.length>1?'s':''}` : '';
+    card.innerHTML = `
+      <div class="rec-icon">${icon}</div>
+      <div class="rec-info">
+        <div class="rec-name">${esc(name||tmpl.src||'')} <span class="rec-badge">${badge}</span></div>
+        <div class="rec-meta">From ${tmpl.startMonth}${overrideTxt}</div>
+      </div>
+      <div class="rec-amt ${type==='income'?'inc':'sp'}">${fmt(tmpl.amt)}</div>`;
+    card.onclick = ()=> openRecModal(tmpl.id);
+    el.appendChild(card);
+  });
+}
+
+function getOverridesForTemplate(templateId){
+  // Find all month-specific overrides for this template
+  const overrides = [];
+  Object.entries(D.months||{}).forEach(([month, data])=>{
+    const inc = (data.income||[]).find(e=>e.templateId===templateId&&e.overrideMonth);
+    const sp  = (data.spending||[]).find(e=>e.templateId===templateId&&e.overrideMonth);
+    if(inc) overrides.push({month, entry:inc, type:'income'});
+    if(sp)  overrides.push({month, entry:sp, type:'spending'});
+  });
+  // Also check deleted (skipped months)
+  (D.deleted||[]).filter(d=>d.templateId===templateId).forEach(d=>{
+    overrides.push({month:d.month, skipped:true});
+  });
+  return overrides.sort((a,b)=>a.month.localeCompare(b.month));
+}
+
+// ── RECURRING EDIT MODAL ──
+let editingTemplateId = null;
+
+function openRecModal(templateId){
+  const tmpl = (D.templates||[]).find(t=>t.id===templateId);
+  if(!tmpl) return;
+  editingTemplateId = templateId;
+
+  $id('recModalTitle').textContent = tmpl.type==='income' ? 'Edit Recurring Income' : 'Edit Recurring Spending';
+  $id('recModalType').textContent  = tmpl.type==='income' ? '💰 Income' : '💸 Spending';
+
+  // Show/hide fields based on type
+  $id('recCatField').style.display = tmpl.type==='spending' ? '' : 'none';
+  if(tmpl.type==='income'){
+    $id('recName').value = tmpl.src||'';
+  } else {
+    $id('recName').value = ''; // not used for spending
+    $id('recCat').value  = tmpl.cat||'🏠 Housing';
+  }
+  // For spending, use cat name as the label
+  const nameLabel = document.querySelector('#recOv .field label');
+  if(nameLabel) nameLabel.textContent = tmpl.type==='income' ? 'Source' : 'Description (optional)';
+
+  $id('recAmt').value        = tmpl.amt;
+  $id('recRepeat').value     = tmpl.repeat;
+  $id('recStartMonth').value = tmpl.startMonth;
+
+  // Render overrides
+  renderOverrideList(templateId);
+  $id('recOv').classList.add('on');
+}
+
+function renderOverrideList(templateId){
+  const overrides = getOverridesForTemplate(templateId);
+  const list = $id('recOverrideList');
+  const noOv = $id('recNoOverrides');
+
+  if(!overrides.length){
+    list.innerHTML = '';
+    noOv.style.display = '';
+    return;
+  }
+  noOv.style.display = 'none';
+  list.innerHTML = overrides.map(o=>{
+    if(o.skipped){
+      return `<div class="override-row">
+        <span class="override-month">${o.month}</span>
+        <span style="color:var(--muted);font-size:12px;">Skipped</span>
+        <button onclick="removeOverride('${templateId}','${o.month}','skipped')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 4px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+      </div>`;
+    }
+    return `<div class="override-row">
+      <span class="override-month">${o.month}</span>
+      <span style="font-family:'DM Mono',monospace;font-size:13px;color:${o.type==='income'?'var(--green)':'var(--red)'};">${fmt(o.entry.amt)}</span>
+      <button onclick="removeOverride('${templateId}','${o.month}','override')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 4px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function removeOverride(templateId, month, kind){
+  if(kind==='skipped'){
+    D.deleted = (D.deleted||[]).filter(d=>!(d.templateId===templateId&&d.month===month));
+  } else {
+    const data = D.months[month];
+    if(data){
+      data.income  = (data.income||[]).filter(e=>!(e.templateId===templateId&&e.overrideMonth));
+      data.spending = (data.spending||[]).filter(e=>!(e.templateId===templateId&&e.overrideMonth));
+    }
+  }
+  renderOverrideList(templateId);
+  save();
+}
+
+function closeRecModal(){ $id('recOv').classList.remove('on'); }
+$id('recOv').addEventListener('click', e=>{ if(e.target===$id('recOv')) closeRecModal(); });
+
+function saveRecurring(){
+  const tmpl = (D.templates||[]).find(t=>t.id===editingTemplateId);
+  if(!tmpl) return;
+
+  const amt = parseFloat($id('recAmt').value);
+  if(isNaN(amt)||amt<=0){ alert('Please enter a valid amount.'); return; }
+
+  if(tmpl.type==='income'){
+    const src = $id('recName').value.trim();
+    if(!src){ alert('Please enter a source name.'); return; }
+    tmpl.src = src;
+  } else {
+    tmpl.cat = $id('recCat').value;
+  }
+  tmpl.amt        = amt;
+  tmpl.repeat     = $id('recRepeat').value;
+  tmpl.startMonth = $id('recStartMonth').value||tmpl.startMonth;
+
+  save(); closeRecModal(); renderRecurring();
+}
+
+function deleteRecurring(){
+  if(!confirm('Delete this recurring transaction? This removes it from all future months. Month-specific overrides will also be removed.')) return;
+  const tmpl = (D.templates||[]).find(t=>t.id===editingTemplateId);
+  if(!tmpl) return;
+
+  // Remove template
+  D.templates = D.templates.filter(t=>t.id!==editingTemplateId);
+  // Remove all overrides
+  Object.values(D.months||{}).forEach(data=>{
+    data.income   = (data.income||[]).filter(e=>e.templateId!==editingTemplateId);
+    data.spending = (data.spending||[]).filter(e=>e.templateId!==editingTemplateId);
+  });
+  // Remove skips
+  D.deleted = (D.deleted||[]).filter(d=>d.templateId!==editingTemplateId);
+
+  save(); closeRecModal(); renderRecurring();
+}
+</script>
 
 <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 <script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
