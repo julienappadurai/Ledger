@@ -667,7 +667,11 @@ async function handleFile(f){
   if(!I.accId){alert('Please select an account.');return;}
   $id('ip2sub').textContent='File: '+f.name+' — adjust any column that looks wrong.';
   const ext=f.name.split('.').pop().toLowerCase();
-  if(ext==='csv'||ext==='txt'){parseCSV(await f.text());}
+  if(ext==='csv'||ext==='txt'){
+    const txt=await f.text();
+    if(isBlockFormat(txt)){parseBlockFormat(txt);}
+    else{parseCSV(txt);}
+  }
   else if(ext==='xlsx'||ext==='xls'){
     const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
@@ -728,6 +732,63 @@ function parseOFX(txt){
   I.rows=blocks.map(b=>[g(b,'DTPOSTED').slice(0,8),g(b,'NAME')||g(b,'MEMO'),g(b,'TRNAMT'),g(b,'TRNTYPE')]);
   buildMap();
   setTimeout(()=>{sMap('date','0');sMap('description','1');sMap('amount','2');},50);
+}
+
+function isBlockFormat(txt){
+  // Detect Santander-style block format: lines like "Date: X", "Amount: Y" etc.
+  const lines=txt.replace(/\xa0/g,' ').replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  let dateCount=0, amtCount=0;
+  lines.forEach(l=>{
+    const t=l.trim();
+    if(/^Date[:\s]/i.test(t)) dateCount++;
+    if(/^Amount[:\s]/i.test(t)) amtCount++;
+  });
+  return dateCount>=2 && amtCount>=2;
+}
+
+function parseBlockFormat(txt){
+  // Parse Santander/Nationwide style: repeating Date/Description/Amount/Balance blocks
+  const lines=txt.replace(/\xa0/g,' ').replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  const records=[];
+  let cur={};
+  lines.forEach(line=>{
+    const t=line.trim();
+    if(!t) return;
+    // Match "Key: Value" pattern
+    const m=t.match(/^([A-Za-z\/]+)[:\s]+(.+)$/);
+    if(!m) return;
+    const key=m[1].trim().toLowerCase().replace(/[^a-z]/g,'');
+    const val=m[2].trim();
+    if(key==='date'){
+      // New record starting
+      if(cur.date) records.push({...cur});
+      cur={date:val};
+    } else if(key==='description'||key==='desc'||key==='details'||key==='narrative'||key==='merchantdescription'){
+      cur.description=val;
+    } else if(key==='amount'){
+      cur.amount=val;
+    } else if(key==='balance'){
+      cur.balance=val;
+    } else if(key==='type'){
+      cur.type=val;
+    }
+  });
+  if(cur.date) records.push(cur);
+
+  if(!records.length){alert('Could not parse this file format.');return;}
+
+  // Convert to rows + headers format
+  I.hdrs=['Date','Description','Amount','Balance'];
+  I.rows=records.map(r=>[r.date||'',r.description||'',r.amount||'',r.balance||'']);
+  buildMap();
+  // Auto-map all columns
+  setTimeout(()=>{
+    sMap('date','0');
+    sMap('description','1');
+    sMap('amount','2');
+    sMap('balance','3');
+    setAmode('single');
+  },50);
 }
 
 const FLDS=[
