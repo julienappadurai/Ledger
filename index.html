@@ -675,6 +675,7 @@ async function handleFile(f){
     const head=new TextDecoder('utf-8',{fatal:false}).decode(bytes.slice(0,20)).toLowerCase();
     if(head.includes('<!doctype')||head.includes('<html')){
       parseHtmlXls(new TextDecoder('iso-8859-1').decode(bytes));
+      return; // parseHtmlXls handles navigation directly
     } else {
       const wb=XLSX.read(buf,{type:'array'});
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
