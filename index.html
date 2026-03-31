@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — Personal Finance</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#0e0f0e;--surface:#161715;--surface2:#1e1f1d;--border:#2a2b29;--gold:#c9a84c;--gold-light:#e8c97a;--green:#4caf7d;--red:#e05c5c;--blue:#5c9de0;--text:#e8e6df;--muted:#7a7870;--radius:12px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.4;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");}
+.app{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:32px 20px 80px;}
+
+/* HEADER */
+header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:36px;flex-wrap:wrap;gap:12px;}
+.logo{font-family:'Playfair Display',serif;font-size:28px;color:var(--gold);letter-spacing:-.5px;}
+.logo span{color:var(--muted);font-size:11px;display:block;font-family:'DM Mono',monospace;letter-spacing:2px;margin-top:2px;}
+.header-right{display:flex;align-items:center;gap:12px;}
+.date-badge{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-align:right;}
+.sync-badge{display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer;transition:all .15s;color:var(--muted);}
+.sync-badge:hover{border-color:var(--gold);color:var(--gold);}
+.sync-badge.connected{color:var(--green);border-color:rgba(76,175,125,.3);}
+.sync-badge.syncing{color:var(--gold);border-color:rgba(201,168,76,.3);}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+/* NET WORTH */
+.networth-banner{background:linear-gradient(135deg,#1a1b18,#1e1f1b);border:1px solid var(--border);border-top:2px solid var(--gold);border-radius:var(--radius);padding:28px 32px;margin-bottom:28px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;position:relative;overflow:hidden;}
+.networth-banner::after{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;background:radial-gradient(circle,rgba(201,168,76,.07),transparent 70%);pointer-events:none;}
+.nw-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
+.nw-value{font-family:'Playfair Display',serif;font-size:30px;color:var(--gold-light);}
+.nw-value.green{color:var(--green);}.nw-value.red{color:var(--red);}
+.nw-sub{font-size:12px;color:var(--muted);margin-top:4px;}
+
+/* MONTHS */
+.month-row{display:flex;gap:8px;margin-bottom:28px;overflow-x:auto;padding-bottom:4px;}
+.month-btn{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .15s;}
+.month-btn:hover{border-color:var(--gold);color:var(--gold);}
+.month-btn.active{background:var(--gold);color:var(--bg);border-color:var(--gold);font-weight:500;}
+
+/* SECTIONS */
+.section-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;margin-top:28px;display:flex;align-items:center;gap:12px;}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ACCOUNT CARDS */
+.accounts-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:580px){.accounts-grid,.networth-banner{grid-template-columns:1fr;}}
+.account-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .15s,transform .15s;}
+.account-card:hover{border-color:#3a3b39;transform:translateY(-1px);}
+.card-accent{position:absolute;top:0;left:0;width:3px;height:100%;}
+.accent-green{background:var(--green);}.accent-red{background:var(--red);}.accent-blue{background:var(--blue);}.accent-gold{background:var(--gold);}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+.card-type{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+.card-institution{font-size:15px;font-weight:500;margin-top:3px;}
+.card-nick{font-size:12px;color:var(--muted);}
+.card-badge{font-family:'DM Mono',monospace;font-size:9px;padding:3px 7px;border-radius:4px;letter-spacing:1px;}
+.badge-checking{background:rgba(76,175,125,.12);color:var(--green);}
+.badge-savings{background:rgba(201,168,76,.12);color:var(--gold);}
+.badge-credit{background:rgba(224,92,92,.12);color:var(--red);}
+.badge-investment{background:rgba(92,157,224,.12);color:var(--blue);}
+.card-balance{font-family:'Playfair Display',serif;font-size:22px;}
+.card-balance.neg{color:var(--red);}
+.card-delta{font-size:12px;margin-top:3px;}
+.card-delta.pos{color:var(--green);}.card-delta.neg{color:var(--red);}
+.card-actions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);}
+.btn-card{flex:1;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;text-align:center;}
+.btn-card:hover{border-color:var(--gold);color:var(--gold);}
+.btn-card.danger:hover{border-color:var(--red);color:var(--red);}
+.add-card{background:transparent;border:1px dashed var(--border);border-radius:var(--radius);padding:18px 20px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:13px;transition:all .15s;}
+.add-card:hover{border-color:var(--gold);color:var(--gold);}
+
+/* SAVINGS */
+.savings-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;}
+.savings-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.savings-amount{font-family:'Playfair Display',serif;font-size:18px;color:var(--green);}
+.progress-track{background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--green),#6ed09e);border-radius:4px;transition:width .6s ease;}
+.progress-labels{display:flex;justify-content:space-between;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:6px;}
+.chart-area{height:100px;display:flex;align-items:flex-end;gap:6px;padding:8px 0;}
+.bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.bar{width:100%;border-radius:4px 4px 0 0;transition:height .4s ease;min-height:2px;}
+.bar-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;}
+
+/* TRANSACTIONS */
+.tx-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border);}
+.tx-row:last-child{border-bottom:none;}
+.tx-left{display:flex;gap:12px;align-items:center;}
+.tx-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;background:var(--surface2);}
+.tx-desc{font-size:13px;}
+.tx-account{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+.tx-amount{font-family:'DM Mono',monospace;font-size:14px;font-weight:500;}
+.tx-amount.pos{color:var(--green);}.tx-amount.neg{color:var(--red);}
+.delete-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:4px;line-height:1;transition:color .15s;}
+.delete-btn:hover{color:var(--red);}
+.empty-state{text-align:center;padding:32px 20px;color:var(--muted);font-size:13px;}
+.empty-state .big{font-size:32px;margin-bottom:8px;}
+
+/* MODALS */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center;padding:16px;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:460px;max-height:92vh;overflow-y:auto;animation:slideUp .2s ease;}
+.modal.wide{max-width:700px;}
+@keyframes slideUp{from{transform:translateY(16px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.modal h2{font-family:'Playfair Display',serif;font-size:20px;margin-bottom:6px;color:var(--gold);}
+.modal-sub{font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.6;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.field input,.field select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .15s;}
+.field input:focus,.field select:focus{border-color:var(--gold);}
+.field select option{background:var(--surface2);}
+.modal-buttons{display:flex;gap:10px;margin-top:24px;}
+.btn-primary{flex:1;background:var(--gold);color:var(--bg);border:none;border-radius:8px;padding:11px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s;}
+.btn-primary:hover{background:var(--gold-light);}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:11px 18px;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;transition:all .15s;}
+.btn-ghost:hover{border-color:var(--muted);color:var(--text);}
+.tabs{display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:4px;margin-bottom:20px;}
+.tab{flex:1;text-align:center;padding:8px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--muted);transition:all .15s;}
+.tab.active{background:var(--surface);color:var(--text);}
+
+/* IMPORT */
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:36px 24px;text-align:center;cursor:pointer;transition:all .2s;}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--gold);background:rgba(201,168,76,.04);}
+.drop-zone input[type=file]{display:none;}
+.dz-icon{font-size:36px;margin-bottom:12px;}
+.dz-title{font-size:15px;font-weight:500;margin-bottom:6px;}
+.dz-sub{font-size:12px;color:var(--muted);}
+.import-steps{display:flex;align-items:flex-start;gap:0;margin-bottom:24px;}
+.step{flex:1;text-align:center;}
+.step-dot{width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 6px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);transition:all .2s;}
+.step.active .step-dot{background:var(--gold);border-color:var(--gold);color:var(--bg);}
+.step.done .step-dot{background:var(--green);border-color:var(--green);color:var(--bg);}
+.step-label{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:1px;}
+.step-line{width:40px;height:1px;background:var(--border);margin-top:14px;flex-shrink:0;}
+.mapping-table{width:100%;border-collapse:collapse;margin-top:4px;}
+.mapping-table th{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;text-align:left;padding:0 0 10px 0;}
+.mapping-table td{padding:5px 0;vertical-align:top;}
+.mapping-table td:first-child{padding-right:16px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text);padding-top:10px;}
+.mapping-table select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+.mapping-table select:focus{border-color:var(--gold);}
+.preview-wrap{max-height:160px;overflow-y:auto;margin-top:12px;border:1px solid var(--border);border-radius:8px;}
+.preview-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.preview-tbl th{background:var(--surface2);font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--muted);padding:8px 10px;text-align:left;position:sticky;top:0;}
+.preview-tbl td{padding:6px 10px;border-top:1px solid var(--border);font-family:'DM Mono',monospace;font-size:11px;white-space:nowrap;}
+.preview-tbl tr:hover td{background:var(--surface2);}
+.radio-group{display:flex;gap:8px;}
+.radio-opt{flex:1;border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer;transition:all .15s;font-size:13px;}
+.radio-opt:hover{border-color:var(--gold);}
+.radio-opt.selected{border-color:var(--gold);background:rgba(201,168,76,.08);color:var(--gold);}
+.import-summary{background:var(--surface2);border-radius:8px;padding:14px 16px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;text-align:center;}
+.is-num{font-family:'Playfair Display',serif;font-size:20px;color:var(--green);}
+.is-label{font-size:10px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;letter-spacing:1px;}
+.tag-income{color:var(--green);font-family:'DM Mono',monospace;font-size:10px;}
+.tag-expense{color:var(--red);font-family:'DM Mono',monospace;font-size:10px;}
+
+/* BALANCE CONFIRM BOX */
+.balance-confirm-box{background:var(--surface2);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+.balance-confirm-box .bcb-title{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px;}
+.balance-confirm-box .bcb-value{font-family:'Playfair Display',serif;font-size:24px;color:var(--gold-light);margin-bottom:6px;}
+.balance-confirm-box .bcb-sub{font-size:12px;color:var(--muted);}
+.balance-confirm-box .bcb-warning{font-size:12px;color:var(--gold);margin-top:8px;background:rgba(201,168,76,.08);border-radius:6px;padding:8px 10px;}
+
+/* AUTH SCREEN */
+.auth-screen{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px;padding:32px;}
+.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px;max-width:420px;width:100%;text-align:center;}
+.auth-card h1{font-family:'Playfair Display',serif;font-size:28px;color:var(--gold);margin-bottom:8px;}
+.auth-card p{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:24px;}
+.auth-card ul{text-align:left;font-size:13px;color:var(--muted);line-height:2;margin-bottom:24px;list-style:none;padding:0;}
+.auth-card ul li::before{content:'✓  ';color:var(--green);}
+.btn-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 20px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;transition:all .15s;}
+.btn-google:hover{border-color:var(--gold);background:rgba(201,168,76,.06);}
+.btn-google svg{width:18px;height:18px;flex-shrink:0;}
+.auth-note{font-size:11px;color:var(--muted);max-width:380px;text-align:center;line-height:1.7;}
+
+/* LOADING */
+.loading-overlay{position:fixed;inset:0;background:rgba(14,15,14,.85);z-index:150;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-text{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:2px;}
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <h1>Ledger</h1>
+    <p>Your personal finance tracker. All data is stored <strong style="color:var(--text)">only in your Google Drive</strong> — never on any external server.</p>
+    <ul>
+      <li>Data saved to your "Finance Tracker" folder</li>
+      <li>Works on phone, tablet &amp; laptop</li>
+      <li>Always in sync across devices</li>
+      <li>No account needed beyond Google</li>
+    </ul>
+    <button class="btn-google" onclick="signIn()">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+  </div>
+  <p class="auth-note">Ledger only requests permission to read and write files in your Google Drive. It cannot access any other Google services or data.</p>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none;">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">LOADING…</div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="mainApp" style="display:none;">
+  <header>
+    <div class="logo">Ledger<span>PERSONAL FINANCE</span></div>
+    <div class="header-right">
+      <div class="date-badge" id="dateBadge"></div>
+      <div class="sync-badge" id="syncBadge" onclick="manualSync()">
+        <div class="sync-dot"></div>
+        <span id="syncLabel">Not connected</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="networth-banner">
+    <div><div class="nw-label">Net Worth</div><div class="nw-value" id="netWorth">£0</div><div class="nw-sub">assets minus liabilities</div></div>
+    <div><div class="nw-label">Total Assets</div><div class="nw-value green" id="totalAssets">£0</div><div class="nw-sub">bank + investments</div></div>
+    <div><div class="nw-label">Total Debt</div><div class="nw-value red" id="totalDebt">£0</div><div class="nw-sub">credit cards</div></div>
+  </div>
+
+  <div class="month-row" id="monthRow"></div>
+
+  <div class="section-label">Monthly Savings</div>
+  <div class="savings-row">
+    <div class="savings-header">
+      <div><div style="font-size:14px;font-weight:500;">Saved This Month</div><div style="font-size:12px;color:var(--muted);margin-top:3px;" id="savingsDesc">—</div></div>
+      <div class="savings-amount" id="monthlySavings">£0</div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="savingsBar" style="width:0%"></div></div>
+    <div class="progress-labels"><span>£0</span><span id="savingsGoalLabel">Goal: £1,000</span></div>
+    <div style="margin-top:16px;"><div class="nw-label" style="margin-bottom:10px;">6-Month Trend</div><div class="chart-area" id="savingsChart"></div></div>
+  </div>
+
+  <div class="section-label">Bank Accounts</div><div class="accounts-grid" id="bankGrid"></div>
+  <div class="section-label">Credit Cards</div><div class="accounts-grid" id="creditGrid"></div>
+  <div class="section-label">Investments</div><div class="accounts-grid" id="investGrid"></div>
+  <div class="section-label">Transactions</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px 20px;" id="txList"></div>
+</div>
+
+<!-- FAB -->
+<button onclick="openAddModal()" id="fab" style="display:none;position:fixed;bottom:28px;right:28px;width:52px;height:52px;border-radius:50%;background:var(--gold);border:none;color:var(--bg);font-size:26px;cursor:pointer;box-shadow:0 4px 20px rgba(201,168,76,.4);align-items:center;justify-content:center;z-index:10;transition:transform .15s;" onmouseenter="this.style.transform='scale(1.08)'" onmouseleave="this.style.transform='scale(1)'">+</button>
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h2>Add</h2>
+    <div class="tabs">
+      <div class="tab active" onclick="switchAddTab('account')">Account</div>
+      <div class="tab" onclick="switchAddTab('transaction')">Transaction</div>
+    </div>
+    <div id="accountForm">
+      <div class="field"><label>Bank / Institution</label><input type="text" id="instName" placeholder="e.g. Monzo, Lloyds…"></div>
+      <div class="field"><label>Nickname (optional)</label><input type="text" id="instNick" placeholder="e.g. Emergency Fund"></div>
+      <div class="field"><label>Account Type</label>
+        <select id="accType">
+          <option value="checking">Current Account</option>
+          <option value="savings">Savings Account</option>
+          <option value="credit">Credit Card</option>
+          <option value="investment">Investment / ISA</option>
+        </select>
+      </div>
+      <div class="field"><label>Current Balance (£)</label><input type="number" id="accBalance" placeholder="0.00" step="0.01"></div>
+      <div class="field" id="goalField" style="display:none;"><label>Monthly Savings Goal (£)</label><input type="number" id="savingsGoal" placeholder="1000" step="50"></div>
+      <div class="modal-buttons"><button class="btn-ghost" onclick="closeAddModal()">Cancel</button><button class="btn-primary" onclick="saveAccount()">Add Account</button></div>
+    </div>
+    <div id="txForm" style="display:none;">
+      <div class="field"><label>Description</label><input type="text" id="txDesc" placeholder="e.g. Tesco, Salary…"></div>
+      <div class="field"><label>Amount (£)</label><input type="number" id="txAmt" placeholder="0.00" step="0.01"></div>
+      <div class="field"><label>Type</label><select id="txType"><option value="income">Income (+)</option><option value="expense">Expense (−)</option></select></div>
+      <div class="field"><label>Account</label><select id="txAccount"></select></div>
+      <div class="field"><label>Category</label>
+        <select id="txCategory">
+          <option>🏠 Housing</option><option>🍔 Food</option><option>🚗 Transport</option>
+          <option>💊 Health</option><option>🎮 Entertainment</option><option>💼 Income</option>
+          <option>💳 Debt Payment</option><option>📈 Investment</option><option>🛒 Shopping</option>
+          <option>⚡ Utilities</option><option>🎓 Education</option><option>🔮 Other</option>
+        </select>
+      </div>
+      <div class="modal-buttons"><button class="btn-ghost" onclick="closeAddModal()">Cancel</button><button class="btn-primary" onclick="saveTx()">Add Transaction</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal wide">
+    <div class="import-steps">
+      <div class="step active" id="step1"><div class="step-dot">1</div><div class="step-label">Upload</div></div>
+      <div class="step-line"></div>
+      <div class="step" id="step2"><div class="step-dot">2</div><div class="step-label">Map</div></div>
+      <div class="step-line"></div>
+      <div class="step" id="step3"><div class="step-dot">3</div><div class="step-label">Balance</div></div>
+      <div class="step-line"></div>
+      <div class="step" id="step4"><div class="step-dot">4</div><div class="step-label">Review</div></div>
+    </div>
+
+    <!-- Step 1: Upload -->
+    <div id="importStep1">
+      <h2>Import Transactions</h2>
+      <div class="modal-sub">Upload a file exported from your bank. Works with CSV, Excel (.xlsx), or OFX / QFX formats.</div>
+      <div class="field"><label>Import into account</label><select id="importAccount"></select></div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".csv,.xls,.xlsx,.ofx,.qfx">
+        <div class="dz-icon">📂</div>
+        <div class="dz-title">Click to choose file, or drag &amp; drop</div>
+        <div class="dz-sub">CSV · Excel (.xlsx) · OFX / QFX</div>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--muted);line-height:1.9;background:var(--surface2);border-radius:8px;padding:12px 16px;">
+        <strong style="color:var(--text);display:block;margin-bottom:4px;">How to export from your bank</strong>
+        <span style="color:var(--gold);">Monzo</span> → Account tab → Export to CSV &nbsp;·&nbsp;
+        <span style="color:var(--gold);">Lloyds</span> → Transaction History → Export<br>
+        <span style="color:var(--gold);">Nationwide</span> → Statements → Download &nbsp;·&nbsp;
+        <span style="color:var(--gold);">Santander</span> → My Money → Export<br>
+        <span style="color:var(--gold);">Amex</span> → Account → Download Transactions
+      </div>
+      <div class="modal-buttons"><button class="btn-ghost" onclick="closeImportModal()">Cancel</button></div>
+    </div>
+
+    <!-- Step 2: Map columns -->
+    <div id="importStep2" style="display:none;">
+      <h2>Map Your Columns</h2>
+      <div class="modal-sub" id="mapFilename">Match each field to a column in your file. We've made a best guess — correct anything that looks wrong.</div>
+      <div class="field">
+        <label>How does your bank record amounts?</label>
+        <div class="radio-group">
+          <div class="radio-opt selected" id="amtSingle" onclick="selectAmountMode('single')"><strong>Single amount</strong><br><span style="font-size:11px;color:var(--muted);">+ credit, − debit</span></div>
+          <div class="radio-opt" id="amtSplit" onclick="selectAmountMode('split')"><strong>Separate debit / credit</strong><br><span style="font-size:11px;color:var(--muted);">Two columns</span></div>
+        </div>
+      </div>
+      <table class="mapping-table">
+        <thead><tr><th style="width:38%">Field</th><th>Your file's column</th></tr></thead>
+        <tbody id="mappingBody"></tbody>
+      </table>
+      <div style="margin-top:16px;"><div class="nw-label" style="margin-bottom:8px;">File preview — first 5 rows</div>
+        <div class="preview-wrap"><table class="preview-tbl" id="previewTable"></table></div>
+      </div>
+      <div class="modal-buttons"><button class="btn-ghost" onclick="goToStep(1)">← Back</button><button class="btn-primary" onclick="applyMapping()">Next →</button></div>
+    </div>
+
+    <!-- Step 3: Balance confirmation -->
+    <div id="importStep3" style="display:none;">
+      <h2 id="balStepTitle">Confirm Balance</h2>
+      <div class="modal-sub" id="balStepSub"></div>
+      <div id="balStepContent"></div>
+      <div class="modal-buttons"><button class="btn-ghost" onclick="goToStep(2)">← Back</button><button class="btn-primary" id="balStepNext" onclick="proceedFromBalanceStep()">Review Import →</button></div>
+    </div>
+
+    <!-- Step 4: Review & confirm -->
+    <div id="importStep4" style="display:none;">
+      <h2>Review &amp; Confirm</h2>
+      <div class="modal-sub">Check the transactions below, then click Import.</div>
+      <div class="import-summary">
+        <div><div class="is-num" id="reviewCount">0</div><div class="is-label">Transactions</div></div>
+        <div><div class="is-num" id="reviewIncome">£0</div><div class="is-label">Income</div></div>
+        <div><div class="is-num" style="color:var(--red);" id="reviewExpense">£0</div><div class="is-label">Expenses</div></div>
+        <div><div class="is-num" id="reviewNet">£0</div><div class="is-label">Net</div></div>
+      </div>
+      <div class="preview-wrap" style="max-height:240px;margin-top:12px;"><table class="preview-tbl" id="reviewTable"></table></div>
+      <div id="dupWarning" style="margin-top:12px;display:none;"></div>
+      <div class="modal-buttons"><button class="btn-ghost" onclick="goToStep(3)">← Back</button><button class="btn-primary" onclick="confirmImport()">✓ Import All</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     GOOGLE DRIVE + GAPI
+═══════════════════════════════════════════════════ -->
+<script>
+// ─── GOOGLE API CONFIG ─────────────────────────────────────────────────────
+// IMPORTANT: Replace these with your own Google API credentials.
+// Instructions:
+//   1. Go to https://console.cloud.google.com
+//   2. Create a project (or use existing)
+//   3. Enable "Google Drive API"
+//   4. Create OAuth 2.0 credentials → Web application
+//   5. Add your file's URL (e.g. file:// or served URL) to "Authorised JavaScript origins"
+//   6. Copy the Client ID below
+//   7. API Key: APIs & Services → Credentials → Create API Key
+const GAPI_CLIENT_ID = '259135370683-2kh47mi72o35829gd5e82fqo8hnan56a.apps.googleusercontent.com';
+const GAPI_API_KEY   = 'AIzaSyB9FjDiIuLwRgQm6bus-VbbWybvjWb4RnM';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const FOLDER_NAME = 'Finance Tracker';
+const DATA_FILENAME = 'ledger-data.json';
+
+// ─── STATE ─────────────────────────────────────────────────────────────────
+let state = {accounts:[], transactions:[], savingsGoal:1000, activeMonth:null};
+let driveFileId = null;
+let driveFolderId = null;
+let gapiReady = false;
+let tokenClient = null;
+const now = new Date();
+const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+// ─── GAPI INIT ──────────────────────────────────────────────────────────────
+function initGapi() {
+  gapi.load('client', async () => {
+    await gapi.client.init({ apiKey: GAPI_API_KEY, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GAPI_CLIENT_ID,
+      scope: SCOPES,
+      callback: async (resp) => {
+        if(resp.error) { console.error(resp); return; }
+        await afterSignIn();
+      }
+    });
+    gapiReady = true;
+    // Check if already signed in (token in session)
+    const token = sessionStorage.getItem('gapi_token');
+    if(token) {
+      gapi.client.setToken(JSON.parse(token));
+      await afterSignIn();
+    }
+  });
+}
+
+function signIn() {
+  if(!gapiReady){ alert('Google API still loading. Please wait a moment and try again.'); return; }
+  tokenClient.requestAccessToken({prompt: 'consent'});
+}
+
+async function afterSignIn() {
+  // Store token for session
+  sessionStorage.setItem('gapi_token', JSON.stringify(gapi.client.getToken()));
+  showLoading('Connecting to Google Drive…');
+  try {
+    await ensureFolderAndFile();
+    hideAuth();
+    document.getElementById('mainApp').style.display = '';
+    const fab = document.getElementById('fab');
+    fab.style.display = 'flex';
+    setSyncBadge('connected', 'Drive connected');
+    if(!state.activeMonth) state.activeMonth = currentMonthKey;
+    render();
+  } catch(e) {
+    console.error(e);
+    alert('Could not connect to Google Drive: ' + (e.message||e));
+  } finally {
+    hideLoading();
+  }
+}
+
+function hideAuth(){ document.getElementById('authScreen').style.display = 'none'; }
+function showLoading(msg){ document.getElementById('loadingOverlay').style.display='flex'; document.getElementById('loadingText').textContent=(msg||'Loading…').toUpperCase(); }
+function hideLoading(){ document.getElementById('loadingOverlay').style.display='none'; }
+
+function setSyncBadge(status, label){
+  const b = document.getElementById('syncBadge');
+  b.className = 'sync-badge ' + status;
+  document.getElementById('syncLabel').textContent = label;
+}
+
+async function manualSync(){
+  setSyncBadge('syncing','Syncing…');
+  try {
+    await saveToDrive();
+    setSyncBadge('connected','Saved ' + new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
+  } catch(e){
+    setSyncBadge('','Sync failed');
+    alert('Sync failed: ' + e.message);
+  }
+}
+
+// ─── DRIVE FILE MANAGEMENT ─────────────────────────────────────────────────
+async function ensureFolderAndFile() {
+  // 1. Find or create "Finance Tracker" folder
+  let res = await gapi.client.drive.files.list({
+    q: `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id,name)', spaces: 'drive'
+  });
+  if(res.result.files.length > 0) {
+    driveFolderId = res.result.files[0].id;
+  } else {
+    const created = await gapi.client.drive.files.create({
+      resource: { name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' },
+      fields: 'id'
+    });
+    driveFolderId = created.result.id;
+  }
+
+  // 2. Find or create data file inside folder
+  res = await gapi.client.drive.files.list({
+    q: `name='${DATA_FILENAME}' and '${driveFolderId}' in parents and trashed=false`,
+    fields: 'files(id,name)', spaces: 'drive'
+  });
+  if(res.result.files.length > 0) {
+    driveFileId = res.result.files[0].id;
+    await loadFromDrive();
+  } else {
+    // New user — create empty data file
+    await createDriveFile();
+  }
+}
+
+async function loadFromDrive() {
+  showLoading('Loading your data…');
+  try {
+    const res = await gapi.client.drive.files.get({ fileId: driveFileId, alt: 'media' });
+    const loaded = JSON.parse(res.body);
+    state = Object.assign({accounts:[], transactions:[], savingsGoal:1000, activeMonth:currentMonthKey}, loaded);
+    if(!state.activeMonth) state.activeMonth = currentMonthKey;
+  } catch(e) {
+    console.warn('Could not load data file, starting fresh:', e);
+  }
+}
+
+async function saveToDrive() {
+  if(!driveFileId) return;
+  setSyncBadge('syncing','Saving…');
+  const body = JSON.stringify(state, null, 2);
+  await gapi.client.request({
+    path: `/upload/drive/v3/files/${driveFileId}`,
+    method: 'PATCH',
+    params: { uploadType: 'media' },
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+  setSyncBadge('connected','Saved ' + new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}));
+}
+
+async function createDriveFile() {
+  // Create file metadata
+  const meta = await gapi.client.drive.files.create({
+    resource: { name: DATA_FILENAME, parents: [driveFolderId], mimeType: 'application/json' },
+    fields: 'id'
+  });
+  driveFileId = meta.result.id;
+  // Upload empty state
+  const body = JSON.stringify(state, null, 2);
+  await gapi.client.request({
+    path: `/upload/drive/v3/files/${driveFileId}`,
+    method: 'PATCH',
+    params: { uploadType: 'media' },
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+}
+
+async function save() {
+  try { await saveToDrive(); } catch(e) { console.warn('Drive save failed, will retry:', e); setSyncBadge('','Save failed — check connection'); }
+}
+
+// ─── FORMATTING ─────────────────────────────────────────────────────────────
+function fmt(n, sign=false){
+  const abs=Math.abs(n).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(sign) return (n>=0?'+':'−')+'£'+abs;
+  return (n<0?'−':'')+'£'+abs;
+}
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.getElementById('dateBadge').textContent = now.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render(){ buildMonths();renderTopStats();renderAccounts();renderSavings();renderTxList(); }
+
+function buildMonths(){
+  const row=document.getElementById('monthRow'); row.innerHTML='';
+  for(let i=5;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const btn=document.createElement('button');
+    btn.className='month-btn'+(key===state.activeMonth?' active':'');
+    btn.textContent=d.toLocaleString('en-GB',{month:'short',year:'2-digit'});
+    btn.onclick=()=>{state.activeMonth=key;save();render();};
+    row.appendChild(btn);
+  }
+}
+
+function renderTopStats(){
+  const assets=state.accounts.filter(a=>a.type!=='credit').reduce((s,a)=>s+a.balance,0);
+  const debt=state.accounts.filter(a=>a.type==='credit').reduce((s,a)=>s+a.balance,0);
+  document.getElementById('totalAssets').textContent=fmt(assets);
+  document.getElementById('totalDebt').textContent=fmt(debt);
+  document.getElementById('netWorth').textContent=fmt(assets-debt);
+}
+
+function getMonthTxs(key){ return state.transactions.filter(t=>t.month===key); }
+
+function renderAccounts(){
+  [{id:'bankGrid',types:['checking','savings'],accent:t=>t==='checking'?'green':'gold'},
+   {id:'creditGrid',types:['credit'],accent:()=>'red'},
+   {id:'investGrid',types:['investment'],accent:()=>'blue'}
+  ].forEach(({id,types,accent})=>{
+    const grid=document.getElementById(id); grid.innerHTML='';
+    state.accounts.filter(a=>types.includes(a.type)).forEach(acc=>{
+      const txs=getMonthTxs(state.activeMonth).filter(t=>t.accountId===acc.id);
+      const net=txs.reduce((s,t)=>s+(t.type==='income'?t.amount:-t.amount),0);
+      const card=document.createElement('div'); card.className='account-card';
+      card.innerHTML=`<div class="card-accent accent-${accent(acc.type)}"></div>
+        <div class="card-top">
+          <div><div class="card-type">${esc(acc.type)}</div>
+            <div class="card-institution">${esc(acc.name)}</div>
+            ${acc.nick?`<div class="card-nick">${esc(acc.nick)}</div>`:''}
+          </div>
+          <span class="card-badge badge-${acc.type}">${acc.type}</span>
+        </div>
+        <div class="card-balance${acc.balance<0?' neg':''}">${fmt(acc.balance)}</div>
+        <div class="card-delta ${net>=0?'pos':'neg'}">${fmt(net,true)} this month</div>
+        <div class="card-actions">
+          <div class="btn-card" onclick="openImportFor('${acc.id}')">⬆ Import file</div>
+          <div class="btn-card danger" onclick="deleteAccount('${acc.id}')">✕ Remove</div>
+        </div>`;
+      grid.appendChild(card);
+    });
+    const add=document.createElement('div'); add.className='add-card';
+    add.innerHTML='<span style="font-size:20px">+</span> Add Account';
+    add.onclick=()=>{openAddModal();document.getElementById('accType').value=types[0];};
+    grid.appendChild(add);
+  });
+}
+
+function renderSavings(){
+  const txs=getMonthTxs(state.activeMonth);
+  const inc=txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const exp=txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const saved=inc-exp;
+  document.getElementById('monthlySavings').textContent=fmt(saved);
+  document.getElementById('monthlySavings').style.color=saved>=0?'var(--green)':'var(--red)';
+  const goal=state.savingsGoal||1000;
+  document.getElementById('savingsBar').style.width=Math.min(100,Math.max(0,saved/goal*100))+'%';
+  document.getElementById('savingsGoalLabel').textContent='Goal: '+fmt(goal);
+  document.getElementById('savingsDesc').textContent=`Income ${fmt(inc)} — Expenses ${fmt(exp)}`;
+  const chart=document.getElementById('savingsChart'); chart.innerHTML='';
+  const months=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const t=getMonthTxs(key);
+    months.push({label:d.toLocaleString('en-GB',{month:'short'}),value:t.filter(x=>x.type==='income').reduce((s,x)=>s+x.amount,0)-t.filter(x=>x.type==='expense').reduce((s,x)=>s+x.amount,0),key});
+  }
+  const maxV=Math.max(...months.map(m=>Math.abs(m.value)),1);
+  months.forEach(m=>{
+    const w=document.createElement('div');w.className='bar-wrap';
+    const b=document.createElement('div');b.className='bar';
+    b.style.height=(Math.abs(m.value)/maxV*80)+'px';
+    b.style.background=m.value>=0?'var(--green)':'var(--red)';
+    b.style.opacity=m.key===state.activeMonth?'1':'0.4';
+    const l=document.createElement('div');l.className='bar-label';l.textContent=m.label;
+    w.appendChild(b);w.appendChild(l);chart.appendChild(w);
+  });
+}
+
+function renderTxList(){
+  const list=document.getElementById('txList');
+  const txs=getMonthTxs(state.activeMonth).slice().reverse();
+  if(!txs.length){list.innerHTML='<div class="empty-state"><div class="big">📋</div>No transactions this month.<br>Use <strong style="color:var(--gold)">⬆ Import file</strong> on an account card, or add one manually.</div>';return;}
+  list.innerHTML='';
+  txs.forEach(t=>{
+    const row=document.createElement('div');row.className='tx-row';
+    const acc=state.accounts.find(a=>a.id===t.accountId);
+    const cat=t.category||'🔮 Other';
+    row.innerHTML=`<div class="tx-left">
+      <div class="tx-icon">${cat.split(' ')[0]}</div>
+      <div><div class="tx-desc">${esc(t.desc)}</div>
+        <div class="tx-account">${acc?esc(acc.name):'Unknown'} · ${esc(cat.split(' ').slice(1).join(' '))}</div>
+      </div></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="tx-amount ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'−'}${fmt(t.amount)}</div>
+        <button class="delete-btn" onclick="deleteTx('${t.id}')">×</button>
+      </div>`;
+    list.appendChild(row);
+  });
+}
+
+function deleteAccount(id){
+  if(!confirm('Remove this account and all its transactions?'))return;
+  state.accounts=state.accounts.filter(a=>a.id!==id);
+  state.transactions=state.transactions.filter(t=>t.accountId!==id);
+  save();render();
+}
+function deleteTx(id){
+  const tx=state.transactions.find(t=>t.id===id);if(!tx)return;
+  const acc=state.accounts.find(a=>a.id===tx.accountId);
+  if(acc) acc.balance-=tx.type==='income'?tx.amount:-tx.amount;
+  state.transactions=state.transactions.filter(t=>t.id!==id);
+  save();render();
+}
+
+// ─── ADD MODAL ───────────────────────────────────────────────────────────────
+function openAddModal(){ document.getElementById('addModal').classList.add('open'); switchAddTab('account'); }
+function closeAddModal(){ document.getElementById('addModal').classList.remove('open'); }
+document.getElementById('addModal').addEventListener('click',e=>{if(e.target===document.getElementById('addModal'))closeAddModal();});
+function switchAddTab(tab){
+  document.querySelectorAll('#addModal .tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='account')||(i===1&&tab==='transaction')));
+  document.getElementById('accountForm').style.display=tab==='account'?'':'none';
+  document.getElementById('txForm').style.display=tab==='transaction'?'':'none';
+  if(tab==='transaction') document.getElementById('txAccount').innerHTML=state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+  document.getElementById('goalField').style.display='none';
+}
+document.getElementById('accType').addEventListener('change',function(){ document.getElementById('goalField').style.display=this.value==='savings'?'':'none'; });
+function saveAccount(){
+  const name=document.getElementById('instName').value.trim();
+  if(!name)return alert('Please enter a bank name.');
+  const goal=parseFloat(document.getElementById('savingsGoal').value);
+  if(goal) state.savingsGoal=goal;
+  state.accounts.push({id:Date.now().toString(),name,nick:document.getElementById('instNick').value.trim(),type:document.getElementById('accType').value,balance:parseFloat(document.getElementById('accBalance').value)||0,importCount:0});
+  save();closeAddModal();render();
+  ['instName','instNick','accBalance'].forEach(id=>document.getElementById(id).value='');
+}
+function saveTx(){
+  const desc=document.getElementById('txDesc').value.trim();
+  const amount=parseFloat(document.getElementById('txAmt').value);
+  const type=document.getElementById('txType').value;
+  const accountId=document.getElementById('txAccount').value;
+  const category=document.getElementById('txCategory').value;
+  if(!desc||!amount||!accountId)return alert('Please fill all fields.');
+  const acc=state.accounts.find(a=>a.id===accountId);
+  if(acc) acc.balance+=type==='income'?amount:-amount;
+  state.transactions.push({id:Date.now().toString(),desc,amount,type,accountId,category,month:state.activeMonth,date:new Date().toISOString()});
+  save();closeAddModal();render();
+  document.getElementById('txDesc').value='';document.getElementById('txAmt').value='';
+}
+
+// ─── IMPORT FLOW ─────────────────────────────────────────────────────────────
+let imp = {rawRows:[],headers:[],accountId:null,parsedTxs:[],amountMode:'single',hasBalanceCol:false,calculatedEndBalance:0,earliestDate:null,latestDate:null};
+
+function openImportFor(accountId){
+  imp.accountId=accountId;
+  document.getElementById('importAccount').innerHTML=state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)}${a.nick?' — '+esc(a.nick):''}</option>`).join('');
+  document.getElementById('importAccount').value=accountId;
+  document.getElementById('fileInput').value='';
+  goToStep(1);
+  document.getElementById('importModal').classList.add('open');
+}
+function closeImportModal(){ document.getElementById('importModal').classList.remove('open'); }
+document.getElementById('importModal').addEventListener('click',e=>{if(e.target===document.getElementById('importModal'))closeImportModal();});
+
+document.getElementById('fileInput').addEventListener('change',e=>handleFile(e.target.files[0]));
+const dz=document.getElementById('dropZone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');handleFile(e.dataTransfer.files[0]);});
+
+function goToStep(n){
+  [1,2,3,4].forEach(i=>{
+    document.getElementById('importStep'+i).style.display=i===n?'':'none';
+    const s=document.getElementById('step'+i);
+    if(s){ s.classList.remove('active','done'); if(i<n) s.classList.add('done'); else if(i===n) s.classList.add('active'); }
+  });
+}
+
+async function handleFile(file){
+  if(!file) return;
+  imp.accountId=document.getElementById('importAccount').value;
+  if(!imp.accountId){alert('Please select an account first.');return;}
+  document.getElementById('mapFilename').textContent=`File: ${file.name}`;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='csv'){ parseCSV(await file.text()); }
+  else if(ext==='xlsx'||ext==='xls'){
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+    imp.headers=rows[0].map(String);
+    imp.rawRows=rows.slice(1).filter(r=>r.some(c=>c!==''&&c!=null));
+    buildMappingUI();
+  } else if(ext==='ofx'||ext==='qfx'){
+    parseOFX(await file.text());
+  } else { alert('Please upload a CSV or Excel (.xlsx) file.'); return; }
+  goToStep(2);
+}
+
+function parseCSV(text){
+  const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
+  function splitRow(line){
+    const cols=[];let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+      else if(line[i]===','&&!inQ){cols.push(cur.trim());cur='';}
+      else cur+=line[i];
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+  imp.headers=splitRow(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
+  imp.rawRows=lines.slice(1).map(splitRow).filter(r=>r.some(c=>c!==''));
+  buildMappingUI();
+}
+
+function parseOFX(text){
+  const blocks=text.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)||[];
+  if(!blocks.length){alert('Could not parse OFX file — please export as CSV instead.');return;}
+  const get=(b,tag)=>{const m=b.match(new RegExp('<'+tag+'>([^<\n]+)','i'));return m?m[1].trim():'';};
+  imp.headers=['DATE','DESCRIPTION','AMOUNT','TYPE'];
+  imp.rawRows=blocks.map(b=>[get(b,'DTPOSTED').slice(0,8),get(b,'NAME')||get(b,'MEMO'),get(b,'TRNAMT'),get(b,'TRNTYPE')]);
+  buildMappingUI();
+  setTimeout(()=>{setMap('date','0');setMap('description','1');setMap('amount','2');},50);
+}
+
+const FIELDS=[
+  {key:'date',        label:'Date',                 required:true},
+  {key:'description', label:'Description / Payee',  required:true},
+  {key:'amount',      label:'Amount',               required:false,hint:'+ credit, − debit (single column)'},
+  {key:'debit',       label:'Money Out (Debit)',     required:false,hint:'Split column mode'},
+  {key:'credit',      label:'Money In (Credit)',     required:false,hint:'Split column mode'},
+  {key:'balance',     label:'Running Balance',       required:false},
+  {key:'category',    label:'Category',              required:false},
+  {key:'reference',   label:'Reference / Notes',     required:false},
+];
+
+function buildMappingUI(){
+  const hdrs=imp.headers;
+  const noOpt='<option value="">— ignore —</option>';
+  const opts=hdrs.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join('');
+  const body=document.getElementById('mappingBody'); body.innerHTML='';
+  FIELDS.forEach(f=>{
+    const tr=document.createElement('tr'); tr.id='maprow_'+f.key;
+    tr.innerHTML=`<td>${f.label}${f.required?'<span style="color:var(--red)"> *</span>':''}<br>${f.hint?`<span style="font-size:10px;color:var(--muted);">${f.hint}</span>`:''}</td>
+      <td><select id="map_${f.key}">${noOpt}${opts}</select></td>`;
+    body.appendChild(tr);
+  });
+  autoDetect(hdrs); buildPreview(); updateAmountRows();
+}
+
+function autoDetect(hdrs){
+  const lo=hdrs.map(h=>h.toLowerCase());
+  const best=(...kws)=>{for(const kw of kws){const i=lo.findIndex(h=>h.includes(kw));if(i>=0)return String(i);}return '';};
+  setMap('date',       best('date','transaction date','trans date','posted','value date','booking date'));
+  setMap('description',best('description','narrative','details','memo','payee','merchant','name','particulars','transaction'));
+  setMap('amount',     best('amount','value','transaction amount','net amount','gbp amount'));
+  setMap('debit',      best('debit','money out','withdrawals','paid out','charge','debit amount'));
+  setMap('credit',     best('credit','money in','deposits','paid in','credit amount'));
+  setMap('balance',    best('balance','running balance','available balance','closing balance'));
+  setMap('category',   best('category','type','merchant category','transaction type'));
+  setMap('reference',  best('reference','ref','notes','note','additional info','memo'));
+  const hasDebit=document.getElementById('map_debit').value!=='';
+  const hasCredit=document.getElementById('map_credit').value!=='';
+  selectAmountMode((hasDebit||hasCredit)?'split':'single');
+}
+
+function setMap(key,val){ const el=document.getElementById('map_'+key); if(el&&val!=='') el.value=val; }
+function getMap(key){ const v=document.getElementById('map_'+key)?.value; return v===''?-1:parseInt(v); }
+
+function selectAmountMode(mode){
+  imp.amountMode=mode;
+  document.getElementById('amtSingle').classList.toggle('selected',mode==='single');
+  document.getElementById('amtSplit').classList.toggle('selected',mode==='split');
+  updateAmountRows();
+}
+function updateAmountRows(){
+  const split=imp.amountMode==='split';
+  const dim=(id,d)=>{ const el=document.getElementById('maprow_'+id); if(el) el.style.opacity=d?'0.3':'1'; };
+  dim('amount',split); dim('debit',!split); dim('credit',!split);
+}
+
+function buildPreview(){
+  document.getElementById('previewTable').innerHTML=
+    '<thead><tr>'+imp.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead>'
+    +'<tbody>'+imp.rawRows.slice(0,5).map(r=>'<tr>'+r.map(c=>`<td>${esc(String(c).slice(0,26))}</td>`).join('')+'</tr>').join('')+'</tbody>';
+}
+
+function applyMapping(){
+  if(getMap('date')<0||getMap('description')<0) return alert('Please map at least Date and Description.');
+  if(imp.amountMode==='single'&&getMap('amount')<0) return alert('Please map the Amount column.');
+  if(imp.amountMode==='split'&&getMap('debit')<0&&getMap('credit')<0) return alert('Please map at least one of Money Out or Money In.');
+
+  imp.accountId=document.getElementById('importAccount').value;
+  if(!imp.accountId) return alert('Please select an account.');
+
+  // Parse transactions
+  const parsed=[];
+  const dates=[];
+  imp.rawRows.forEach((row,ri)=>{
+    const rawDate=String(row[getMap('date')]||'').trim();
+    const desc=(String(row[getMap('description')]||'').trim())||'Transaction';
+    const refIdx=getMap('reference'), catIdx=getMap('category'), balIdx=getMap('balance');
+    const ref=refIdx>=0?String(row[refIdx]||'').trim():'';
+    const catRaw=catIdx>=0?String(row[catIdx]||'').trim():'';
+    const balance=balIdx>=0?parseFloat(String(row[balIdx]).replace(/[£,\s]/g,'').replace(/[^0-9.\-]/g,''))||null:null;
+
+    let amount=0, type='expense';
+    if(imp.amountMode==='single'){
+      const raw=String(row[getMap('amount')]||'').replace(/[£,\s]/g,'').replace(/[^0-9.\-]/g,'');
+      const v=parseFloat(raw)||0; amount=Math.abs(v); type=v>=0?'income':'expense';
+    } else {
+      const dI=getMap('debit'), cI=getMap('credit');
+      const debit=dI>=0?Math.abs(parseFloat(String(row[dI]||'').replace(/[£,\s]/g,'').replace(/[^0-9.]/g,''))||0):0;
+      const credit=cI>=0?Math.abs(parseFloat(String(row[cI]||'').replace(/[£,\s]/g,'').replace(/[^0-9.]/g,''))||0):0;
+      if(credit>0){amount=credit;type='income';}else if(debit>0){amount=debit;type='expense';}
+    }
+    if(!amount) return;
+
+    const d=parseDate(rawDate);
+    if(d) dates.push(d);
+    let month=state.activeMonth;
+    if(d) month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+
+    parsed.push({
+      id:`imp_${Date.now()}_${ri}_${Math.random().toString(36).slice(2,7)}`,
+      desc:ref?`${desc} – ${ref}`:desc,
+      amount, type, accountId:imp.accountId,
+      category:catRaw?guessCategory(catRaw):guessCategory(desc),
+      month, date:d?d.toISOString():new Date().toISOString(),
+      _balance:balance
+    });
+  });
+
+  if(!parsed.length){alert('No transactions could be parsed. Check your column mapping.');return;}
+  imp.parsedTxs=parsed;
+  imp.hasBalanceCol=getMap('balance')>=0 && parsed.some(t=>t._balance!=null);
+  imp.earliestDate=dates.length?new Date(Math.min(...dates)):null;
+  imp.latestDate=dates.length?new Date(Math.max(...dates)):null;
+
+  // Calculate net change from file
+  const netChange=parsed.reduce((s,t)=>s+(t.type==='income'?t.amount:-t.amount),0);
+  imp.netChangeFromFile=netChange;
+
+  // Last balance from file (if column exists)
+  const lastBalRow=parsed.filter(t=>t._balance!=null).pop();
+  imp.lastBalFromFile=lastBalRow?lastBalRow._balance:null;
+
+  buildBalanceStep();
+  goToStep(3);
+}
+
+// ─── BALANCE STEP ─────────────────────────────────────────────────────────────
+function buildBalanceStep(){
+  const acc=state.accounts.find(a=>a.id===imp.accountId);
+  const isFirstImport = !acc.importCount || acc.importCount===0;
+  const fmtD = d=>d?d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'unknown date';
+  const title=document.getElementById('balStepTitle');
+  const sub=document.getElementById('balStepSub');
+  const content=document.getElementById('balStepContent');
+
+  if(imp.hasBalanceCol){
+    // File has a balance column — show last known balance and ask to confirm
+    const lastBal=imp.lastBalFromFile;
+    title.textContent='Confirm Running Balance';
+    sub.textContent=`Your file includes a running balance column. The latest balance it shows is ${fmt(lastBal)} as of ${fmtD(imp.latestDate)}.`;
+    content.innerHTML=`
+      <div class="balance-confirm-box">
+        <div class="bcb-title">Calculated Balance from File</div>
+        <div class="bcb-value">${fmt(lastBal)}</div>
+        <div class="bcb-sub">As of ${fmtD(imp.latestDate)}</div>
+        <div class="bcb-warning">Please verify this matches your actual bank balance before importing.</div>
+      </div>
+      <div class="field"><label>Confirm or correct the balance (£)</label>
+        <input type="number" id="confirmedBalance" value="${lastBal.toFixed(2)}" step="0.01">
+      </div>`;
+  } else if(isFirstImport){
+    // First import, no balance column — ask for opening and closing balance
+    title.textContent='Opening & Closing Balance';
+    sub.textContent=`This is the first import for ${acc.name}. Since the file doesn't include a running balance column, please enter the account balance at the start and end of the file period.`;
+    content.innerHTML=`
+      <div class="field">
+        <label>Balance at start of file (${fmtD(imp.earliestDate)}) (£)</label>
+        <input type="number" id="openingBalance" placeholder="e.g. 1250.00" step="0.01">
+      </div>
+      <div class="field">
+        <label>Balance at end of file (${fmtD(imp.latestDate)}) (£)</label>
+        <input type="number" id="closingBalance" placeholder="e.g. 1840.00" step="0.01">
+      </div>
+      <div style="font-size:12px;color:var(--muted);background:var(--surface2);border-radius:8px;padding:12px 14px;line-height:1.7;">
+        💡 You can find these on your bank statement or in your banking app. The opening balance is the balance just <em>before</em> the first transaction in the file.
+      </div>`;
+  } else {
+    // Subsequent import — calculate expected balance from existing transactions
+    const allAccTxs=state.transactions.filter(t=>t.accountId===imp.accountId);
+    const calcBalance=acc.balance; // current stored balance
+    const netChange=imp.netChangeFromFile;
+    const projectedBalance=calcBalance+netChange;
+
+    title.textContent='Confirm Projected Balance';
+    sub.textContent=`Based on your existing transactions and this file, here's the projected new balance for ${acc.name}.`;
+    content.innerHTML=`
+      <div class="balance-confirm-box">
+        <div class="bcb-title">Current Balance on Record</div>
+        <div class="bcb-value">${fmt(calcBalance)}</div>
+        <div class="bcb-sub">Before this import</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin:12px 0;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);">
+        <span>Net change from file:</span>
+        <span style="color:${netChange>=0?'var(--green)':'var(--red)'};">${fmt(netChange,true)}</span>
+      </div>
+      <div class="balance-confirm-box">
+        <div class="bcb-title">Projected Balance After Import</div>
+        <div class="bcb-value" style="color:${projectedBalance>=0?'var(--gold-light)':'var(--red)'};">${fmt(projectedBalance)}</div>
+        <div class="bcb-sub">As of ${fmtD(imp.latestDate)}</div>
+        <div class="bcb-warning">Does this match your actual bank balance? If not, correct it below.</div>
+      </div>
+      <div class="field"><label>Correct the balance if needed (£)</label>
+        <input type="number" id="confirmedBalance" value="${projectedBalance.toFixed(2)}" step="0.01">
+      </div>`;
+  }
+}
+
+function proceedFromBalanceStep(){
+  const acc=state.accounts.find(a=>a.id===imp.accountId);
+  const isFirstImport=!acc.importCount||acc.importCount===0;
+
+  if(imp.hasBalanceCol || !isFirstImport){
+    const v=parseFloat(document.getElementById('confirmedBalance')?.value);
+    if(isNaN(v)){alert('Please enter a valid balance.');return;}
+    imp.confirmedEndBalance=v;
+  } else {
+    const opening=parseFloat(document.getElementById('openingBalance')?.value);
+    const closing=parseFloat(document.getElementById('closingBalance')?.value);
+    if(isNaN(opening)||isNaN(closing)){alert('Please enter both balances.');return;}
+    imp.confirmedOpeningBalance=opening;
+    imp.confirmedEndBalance=closing;
+  }
+  buildReview();
+  goToStep(4);
+}
+
+// ─── REVIEW STEP ─────────────────────────────────────────────────────────────
+function buildReview(){
+  const txs=imp.parsedTxs;
+  const inc=txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const exp=txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const net=inc-exp;
+  document.getElementById('reviewCount').textContent=txs.length;
+  document.getElementById('reviewIncome').textContent=fmt(inc);
+  document.getElementById('reviewExpense').textContent=fmt(exp);
+  const netEl=document.getElementById('reviewNet');
+  netEl.textContent=fmt(net); netEl.style.color=net>=0?'var(--green)':'var(--red)';
+  document.getElementById('reviewTable').innerHTML=
+    '<thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Type</th><th>Amount</th></tr></thead><tbody>'
+    +txs.map(t=>`<tr>
+      <td>${t.date?new Date(t.date).toLocaleDateString('en-GB'):''}</td>
+      <td title="${esc(t.desc)}">${esc(t.desc.slice(0,30))}${t.desc.length>30?'…':''}</td>
+      <td>${esc(t.category)}</td>
+      <td class="${t.type==='income'?'tag-income':'tag-expense'}">${t.type}</td>
+      <td class="tx-amount ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'−'}${fmt(t.amount)}</td>
+    </tr>`).join('')+'</tbody>';
+  const existing=new Set(state.transactions.map(t=>t.desc+'|'+t.amount+'|'+t.month));
+  const dups=txs.filter(t=>existing.has(t.desc+'|'+t.amount+'|'+t.month));
+  const w=document.getElementById('dupWarning');
+  if(dups.length){w.style.display='';w.innerHTML=`<div style="background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gold);">⚠ ${dups.length} transactions may already exist — they&#39;ll still be imported. Delete duplicates manually if needed.</div>`;}
+  else w.style.display='none';
+}
+
+function confirmImport(){
+  const acc=state.accounts.find(a=>a.id===imp.accountId);
+  // Set the confirmed end balance
+  acc.balance=imp.confirmedEndBalance;
+  // Store opening balance on first import
+  if(imp.confirmedOpeningBalance!=null&&(!acc.importCount||acc.importCount===0)){
+    acc.openingBalance=imp.confirmedOpeningBalance;
+    acc.openingDate=imp.earliestDate?imp.earliestDate.toISOString():null;
+  }
+  acc.importCount=(acc.importCount||0)+1;
+  // Add transactions (strip internal _balance key)
+  imp.parsedTxs.forEach(t=>{ const{_balance,...tx}=t; state.transactions.push(tx); });
+  save(); closeImportModal(); render();
+  alert(`✓ ${imp.parsedTxs.length} transactions imported. Balance set to ${fmt(acc.balance)}.`);
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function parseDate(s){
+  if(!s) return null;
+  if(/^\d{5}$/.test(s.trim())){const d=new Date((parseInt(s)-25569)*86400*1000);return isNaN(d)?null:d;}
+  let m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(m){const y=m[3].length===2?'20'+m[3]:m[3];const d=new Date(`${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);if(!isNaN(d))return d;}
+  m=s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if(m){const d=new Date(`${m[1]}-${m[2]}-${m[3]}`);if(!isNaN(d))return d;}
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){const d=new Date(`${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`);if(!isNaN(d))return d;}
+  const d=new Date(s); return isNaN(d)?null:d;
+}
+
+function guessCategory(hint){
+  const h=(hint||'').toLowerCase();
+  if(/salary|payroll|wages|bacs in|income/.test(h)) return '💼 Income';
+  if(/tesco|sainsbury|waitrose|aldi|lidl|asda|morrisons|coop|co-op|grocery|supermarket|food|cafe|coffee|restaurant|takeaway|dominos|pizza|kfc|mcdonald|greggs|pret|nandos|uber eat|deliveroo|just eat/.test(h)) return '🍔 Food';
+  if(/rent|mortgage|council tax|water|gas|electric|broadband|bt |sky |virgin media|thames|anglian|sse |edf /.test(h)) return '🏠 Housing';
+  if(/tfl|tube|bus|train|rail|trainline|petrol|parking|uber|bolt|taxi|fuel|shell|bp |esso/.test(h)) return '🚗 Transport';
+  if(/amazon|ebay|asos|next |h&m|primark|shopping|argos|boots|john lewis|marks|m&s/.test(h)) return '🛒 Shopping';
+  if(/netflix|spotify|apple|cinema|disney|entertainment|game|steam|playstation|xbox/.test(h)) return '🎮 Entertainment';
+  if(/gym|health|doctor|pharmacy|dentist|nhs|bupa|vitality/.test(h)) return '💊 Health';
+  if(/student|course|university|college|book|education|tuition/.test(h)) return '🎓 Education';
+  if(/transfer|credit card|payment|repayment|loan/.test(h)) return '💳 Debt Payment';
+  if(/isa|invest|trading|freetrade|vanguard|hargreaves|fidelity|nutmeg/.test(h)) return '📈 Investment';
+  if(/utility|electric|energy/.test(h)) return '⚡ Utilities';
+  return '🔮 Other';
+}
+</script>
+
+<!-- Google APIs -->
+<script src="https://apis.google.com/js/api.js" onload="initGapi()"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</body>
+</html>
