@@ -226,6 +226,8 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div class="hbtns">
       <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
+      <button class="hbtn" onclick="openXlsxImport()">⬆ Import Excel</button>
+      <button class="hbtn" onclick="exportToExcel()">⬇ Export Data</button>
       <button class="hbtn" id="syncBtn" onclick="manualSync()">● Connecting…</button>
       <button class="hbtn" onclick="openSettings()">⚙ Settings</button>
       <button class="hbtn" onclick="signOut()">⏻ Sign out</button>
@@ -399,6 +401,37 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   </div>
 </div>
 
+<!-- XLSX IMPORT MODAL -->
+<div class="ov" id="xlsxImportOv">
+  <div class="modal" style="max-width:480px;">
+    <h2>Import from Excel</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7;">
+      Upload a Ledger Excel template to import income, spending and account balances.<br>
+      <strong style="color:var(--text);">Existing data will be merged — not replaced.</strong>
+    </div>
+    <div style="background:var(--s2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.8;">
+      The template has 3 sheets:<br>
+      <span style="color:var(--green);">Income</span> — Month, Source, Category, Amount, Date, Repeat<br>
+      <span style="color:var(--red);">Spending</span> — Month, Name, Category, Amount, Date, Repeat<br>
+      <span style="color:var(--blue);">Accounts</span> — Account Name, Balance, Type
+    </div>
+    <div class="dz" id="xlsxDz" onclick="document.getElementById('xlsxFi').click()" style="margin-bottom:16px;">
+      <input type="file" id="xlsxFi" accept=".xlsx,.xls">
+      <div style="font-size:28px;margin-bottom:8px;">📊</div>
+      <div style="font-size:14px;font-weight:500;margin-bottom:4px;">Click to choose Excel file</div>
+      <div style="font-size:12px;color:var(--muted);">ledger-template.xlsx</div>
+    </div>
+    <div id="xlsxPreview" style="display:none;margin-bottom:16px;">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Preview</div>
+      <div id="xlsxPreviewContent" style="background:var(--s2);border-radius:8px;padding:12px;font-size:12px;color:var(--text);line-height:1.9;"></div>
+    </div>
+    <div class="mbtns">
+      <button class="mbtn-g" onclick="closeXlsxImport()">Cancel</button>
+      <button class="mbtn-p" id="xlsxImportBtn" onclick="confirmXlsxImport()" style="display:none;">✓ Import</button>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="ov" id="settingsOv">
   <div class="modal" style="max-width:460px;">
@@ -488,7 +521,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       </select>
     </div>
     <div class="field"><label>Amount (£)</label><input type="number" id="catAmt" placeholder="0.00" step="0.01"></div>
-    <div class="field"><label>Date</label><input type="date" id="catDate"></div>
+    <div class="field" id="catDateField"><label>Date</label><input type="date" id="catDate"><div class="date-rule-hint" style="display:none;font-size:10px;color:var(--gold);margin-top:4px;font-family:'DM Mono',monospace;">↻ Date auto-calculated from repeat rule</div></div>
     <div class="field"><label>Repeats</label>
       <select id="catRepeat">
         <option value="none">Does not repeat</option>
@@ -997,14 +1030,34 @@ function renderYearTable(){
 // ═══════════════════════════════════════════════
 // INCOME MODAL
 // ═══════════════════════════════════════════════
-function showRepeatNote(selectEl, noteEl, customDayFieldId){
+// Repeat types where date is auto-calculated from the rule - no need for date picker
+const RULE_BASED_REPEATS=['day_1','day_8','day_15','day_last','day_custom','work_1','work_2','work_3','work_last'];
+
+function showRepeatNote(selectEl, noteEl, customDayFieldId, dateFldId){
   const val=selectEl.value;
-  if(val&&val!=='none'){ noteEl.style.display=''; noteEl.textContent='↻ '+repeatLabel(val)+' from this month onwards'; }
-  else noteEl.style.display='none';
+  const isRule=RULE_BASED_REPEATS.includes(val);
+  if(val&&val!=='none'){
+    noteEl.style.display='';
+    noteEl.textContent='↻ '+repeatLabel(val)+' from this month onwards';
+  } else {
+    noteEl.style.display='none';
+  }
   // Show/hide custom day input
   if(customDayFieldId){
     const fld=$id(customDayFieldId);
     if(fld) fld.style.display=(val==='day_custom')?'':'none';
+  }
+  // Hide date picker for rule-based repeats (date is auto-calculated)
+  if(dateFldId){
+    const df=$id(dateFldId);
+    if(df){
+      df.style.opacity=isRule?'0.35':'1';
+      df.style.pointerEvents=isRule?'none':'';
+      df.title=isRule?'Date is calculated automatically from the repeat rule':'';
+      // Show helper text
+      const hint=df.parentElement&&df.parentElement.querySelector('.date-rule-hint');
+      if(hint) hint.style.display=isRule?'':'none';
+    }
   }
 }
 
@@ -1032,7 +1085,7 @@ function editIncome(id){
     $id('incCat').value=tmpl?tmpl.cat||'💼 Income':'💼 Income';
     $id('incDate').value=defaultDateForMonth(activeMonth);
     $id('incRepeat').value=tmpl?tmpl.repeat:'monthly';
-    showRepeatNote($id('incRepeat'),$id('incRepeatNote'),'incCustomDayField');
+    showRepeatNote($id('incRepeat'),$id('incRepeatNote'),'incCustomDayField','incDateField');
     $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Skip this month';
     $id('incomeOv').classList.add('on'); return;
   }
@@ -1043,7 +1096,7 @@ function editIncome(id){
   $id('incCat').value=r.cat||'💼 Income';
   $id('incDate').value=r.date||defaultDateForMonth(activeMonth);
   $id('incRepeat').value=r.repeat||'none';
-  showRepeatNote($id('incRepeat'),$id('incRepeatNote'),'incCustomDayField');
+  showRepeatNote($id('incRepeat'),$id('incRepeatNote'),'incCustomDayField','incDateField');
   $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Delete';
   $id('incomeOv').classList.add('on');
 }
@@ -1053,19 +1106,27 @@ function closeIncome(){ $id('incomeOv').classList.remove('on'); }
 function saveIncome(){
   const src=$id('incSrc').value.trim();
   const amt=parseFloat($id('incAmt').value);
-  let date=$id('incDate').value||defaultDateForMonth(activeMonth);
   const repeat=$id('incRepeat').value;
-  // For day_custom, overwrite the day part of startDate with the custom day
-  if(repeat==='day_custom'){
+  // Determine target month from date picker (for one-offs and monthly/quarterly)
+  const rawDate=$id('incDate').value||defaultDateForMonth(activeMonth);
+  const targetMonthForDate=rawDate.slice(0,7);
+  let date;
+  if(RULE_BASED_REPEATS&&RULE_BASED_REPEATS.includes(repeat)){
+    // Auto-calculate date from the rule applied to the start month
+    const day=repeatDayForMonth({repeat,startDate:rawDate}, targetMonthForDate);
+    date=`${targetMonthForDate}-${String(day).padStart(2,'0')}`;
+  } else if(repeat==='day_custom'){
     const customDay=parseInt($id('incCustomDay')?.value)||1;
-    const [y,m]=date.split('-');
+    const [y,m]=rawDate.split('-');
     date=`${y}-${m}-${String(Math.min(Math.max(customDay,1),28)).padStart(2,'0')}`;
+  } else {
+    date=rawDate;
   }
   if(!src||isNaN(amt)||amt<=0){ alert('Please enter a source and valid amount.'); return; }
   if(!D.templates) D.templates=[];
   if(!D.deleted) D.deleted=[];
   // Derive the month from the entered date, not the active tab
-  const targetMonth=date?date.slice(0,7):activeMonth;
+  const targetMonth=(date||rawDate||'').slice(0,7)||activeMonth;
   const month=getMonth(targetMonth);
   if(!editingIncome){
     if(repeat&&repeat!=='none'){
@@ -1106,7 +1167,7 @@ function deleteIncome(){
   }
   save(); closeIncome(); render();
 }
-$id('incRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('incRepeatNote'),'incCustomDayField'); });
+$id('incRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('incRepeatNote'),'incCustomDayField','incDateField'); });
 $id('incomeOv').addEventListener('click',e=>{ if(e.target===$id('incomeOv')) closeIncome(); });
 // ═══════════════════════════════════════════════
 // SPENDING MODAL
@@ -1136,7 +1197,7 @@ function editCat(id){
     $id('catAmt').value=tmpl?tmpl.amt:'';
     $id('catDate').value=defaultDateForMonth(activeMonth);
     $id('catRepeat').value=tmpl?tmpl.repeat:'monthly';
-    showRepeatNote($id('catRepeat'),$id('catRepeatNote'),'catCustomDayField');
+    showRepeatNote($id('catRepeat'),$id('catRepeatNote'),'catCustomDayField','catDateField');
     $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Skip this month';
     $id('catOv').classList.add('on'); return;
   }
@@ -1147,7 +1208,7 @@ function editCat(id){
   $id('catName').value=r.cat; $id('catAmt').value=r.amt;
   $id('catDate').value=r.date||defaultDateForMonth(activeMonth);
   $id('catRepeat').value=r.repeat||'none';
-  showRepeatNote($id('catRepeat'),$id('catRepeatNote'),'catCustomDayField');
+  showRepeatNote($id('catRepeat'),$id('catRepeatNote'),'catCustomDayField','catDateField');
   $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Delete';
   $id('catOv').classList.add('on');
 }
@@ -1158,13 +1219,24 @@ function saveCat(){
   const src=$id('catSrc').value.trim();
   const cat=$id('catName').value;
   const amt=parseFloat($id('catAmt').value);
-  const date=$id('catDate').value||defaultDateForMonth(activeMonth);
   const repeat=$id('catRepeat').value;
+  const rawCatDate=$id('catDate').value||defaultDateForMonth(activeMonth);
+  const targetMonthForCatDate=rawCatDate.slice(0,7);
+  let date;
+  if(RULE_BASED_REPEATS&&RULE_BASED_REPEATS.includes(repeat)){
+    const day=repeatDayForMonth({repeat,startDate:rawCatDate},targetMonthForCatDate);
+    date=`${targetMonthForCatDate}-${String(day).padStart(2,'0')}`;
+  } else if(repeat==='day_custom'){
+    const customDay=parseInt($id('catCustomDay')?.value)||1;
+    const [y,m]=rawCatDate.split('-');
+    date=`${y}-${m}-${String(Math.min(Math.max(customDay,1),28)).padStart(2,'0')}`;
+  } else {
+    date=rawCatDate;
+  }
   if(isNaN(amt)||amt<=0){ alert('Please enter a valid amount.'); return; }
   if(!D.templates) D.templates=[];
   if(!D.deleted) D.deleted=[];
-  // Derive the month from the entered date, not the active tab
-  const targetMonth=date?date.slice(0,7):activeMonth;
+  const targetMonth=(date||rawCatDate||'').slice(0,7)||activeMonth;
   const month=getMonth(targetMonth);
   if(!editingCat){
     if(repeat&&repeat!=='none'){
@@ -1205,7 +1277,7 @@ function deleteCat(){
   }
   save(); closeCat(); render();
 }
-$id('catRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('catRepeatNote'),'catCustomDayField'); });
+$id('catRepeat').addEventListener('change',function(){ showRepeatNote(this,$id('catRepeatNote'),'catCustomDayField','catDateField'); });
 $id('catOv').addEventListener('click',e=>{ if(e.target===$id('catOv')) closeCat(); });
 // ═══════════════════════════════════════════════
 // SETTINGS MODAL
@@ -1669,11 +1741,18 @@ function saveRecurring(){
   if(!tmpl) return;
   const amt=parseFloat($id('recAmt').value);
   if(isNaN(amt)||amt<=0){alert('Please enter a valid amount.');return;}
-  tmpl.src = $id('recName').value.trim();
+  tmpl.src=$id('recName').value.trim();
   if(tmpl.type==='spending') tmpl.cat=$id('recCat').value;
-  tmpl.amt=$id('recAmt').value*1;
-  tmpl.repeat=$id('recRepeat').value;
-  tmpl.startMonth=$id('recStartMonth').value||tmpl.startMonth;
+  tmpl.amt=amt;
+  const newRepeat=$id('recRepeat').value;
+  const newStartMonth=$id('recStartMonth').value||tmpl.startMonth;
+  tmpl.repeat=newRepeat;
+  tmpl.startMonth=newStartMonth;
+  // Recalculate startDate from the rule
+  if(RULE_BASED_REPEATS.includes(newRepeat)){
+    const day=repeatDayForMonth({repeat:newRepeat,startDate:tmpl.startDate||newStartMonth+'-01'},newStartMonth);
+    tmpl.startDate=`${newStartMonth}-${String(day).padStart(2,'0')}`;
+  }
   save(); closeRecModal(); renderTimeline();
 }
 
@@ -1685,8 +1764,364 @@ function deleteRecurring(){
   save(); closeRecModal(); renderTimeline();
 }
 
-</script>
 
+// ═══════════════════════════════════════════════
+// EXCEL IMPORT & TEMPLATE DOWNLOAD
+// ═══════════════════════════════════════════════
+
+// Repeat label to code mapping for Excel import
+const REPEAT_LABEL_MAP = {
+  'none':'none','monthly':'monthly','quarterly':'quarterly',
+  'biannually':'biannually','annually':'annually',
+  'day_1':'day_1','1st of month':'day_1','1st of every month':'day_1',
+  'day_8':'day_8','8th of month':'day_8','8th of every month':'day_8',
+  'day_15':'day_15','15th of month':'day_15','15th of every month':'day_15',
+  'day_last':'day_last','last day of month':'day_last','last day':'day_last',
+  'day_custom':'day_custom','custom day':'day_custom',
+  'work_1':'work_1','1st working day':'work_1','1st working day of month':'work_1',
+  'work_2':'work_2','2nd working day':'work_2','2nd working day of month':'work_2',
+  'work_3':'work_3','3rd working day':'work_3','3rd working day of month':'work_3',
+  'work_last':'work_last','last working day':'work_last','last working day of month':'work_last',
+};
+
+function normaliseRepeat(val){
+  if(!val) return 'none';
+  const s=String(val).trim().toLowerCase();
+  return REPEAT_LABEL_MAP[s]||REPEAT_LABEL_MAP[Object.keys(REPEAT_LABEL_MAP).find(k=>k.toLowerCase()===s)]||'none';
+}
+
+function parseExcelDate(val){
+  if(!val) return null;
+  const s=String(val).trim();
+  // DD/MM/YYYY
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  // YYYY-MM-DD
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return s;
+  // Excel serial
+  if(/^\d+$/.test(s)){
+    const d=new Date((parseInt(s)-25569)*86400*1000);
+    if(!isNaN(d)) return d.toISOString().slice(0,10);
+  }
+  return null;
+}
+
+function parseExcelMonth(val){
+  if(!val) return null;
+  const s=String(val).trim();
+  // YYYY-MM
+  if(/^\d{4}-\d{2}$/.test(s)) return s;
+  // From a date value
+  const d=parseExcelDate(val);
+  if(d) return d.slice(0,7);
+  return null;
+}
+
+let xlsxParsedData = null;
+
+function openXlsxImport(){
+  xlsxParsedData=null;
+  $id('xlsxPreview').style.display='none';
+  $id('xlsxImportBtn').style.display='none';
+  $id('xlsxFi').value='';
+  $id('xlsxImportOv').classList.add('on');
+}
+function closeXlsxImport(){ $id('xlsxImportOv').classList.remove('on'); }
+$id('xlsxImportOv').addEventListener('click',e=>{ if(e.target===$id('xlsxImportOv')) closeXlsxImport(); });
+
+const xlsxDz=$id('xlsxDz');
+xlsxDz.addEventListener('dragover',e=>{e.preventDefault();xlsxDz.classList.add('over');});
+xlsxDz.addEventListener('dragleave',()=>xlsxDz.classList.remove('over'));
+xlsxDz.addEventListener('drop',e=>{e.preventDefault();xlsxDz.classList.remove('over');parseXlsxFile(e.dataTransfer.files[0]);});
+$id('xlsxFi').addEventListener('change',e=>{ if(e.target.files[0]) parseXlsxFile(e.target.files[0]); });
+
+async function parseXlsxFile(file){
+  if(!file) return;
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array',cellDates:false});
+
+  const result={income:[],spending:[],accounts:[],templates:[],overrides:[],deletedIds:[]};
+  const errors=[];
+
+  // Helper to get sheet rows as objects
+  function getRows(sheetName){
+    const ws=wb.Sheets[sheetName];
+    if(!ws) return [];
+    return XLSX.utils.sheet_to_json(ws,{defval:''});
+  }
+
+  // ── Parse Income sheet ──
+  getRows('Income').forEach((row,i)=>{
+    const month=parseExcelMonth(row['Month (YYYY-MM)']||row['Month']||row['month']);
+    const src=String(row['Source / Name']||row['Source']||row['Name']||'').trim();
+    const cat=String(row['Category']||'💼 Income').trim();
+    const amt=parseFloat(String(row['Amount (£)']||row['Amount']||0).replace(/[£,]/g,''));
+    const dateRaw=row['Date (DD/MM/YYYY)']||row['Date']||'';
+    const repeatRaw=String(row['Repeat']||'none').trim();
+    const repeat=normaliseRepeat(repeatRaw);
+
+    if(!month||!src||!amt) return; // skip blank rows
+    if(isNaN(amt)||amt<=0){ errors.push(`Income row ${i+2}: invalid amount`); return; }
+
+    let date=parseExcelDate(dateRaw)||`${month}-01`;
+
+    const rowId=String(row['ID']||'').trim();
+    if(repeat.startsWith('override:')){
+      // Month override for a recurring template
+      const overrideMonth=repeat.replace('override:','');
+      result.overrides.push({id:rowId||`xl_ov_${Date.now()}_${i}`,type:'income',src,cat,amt,date,month:overrideMonth,templateId:rowId||null,overrideMonth});
+    } else if(repeat!=='none'){
+      const existing=result.templates.find(t=>t.type==='income'&&(t.id===rowId||(t.src===src&&t.startMonth===month)));
+      if(existing){ Object.assign(existing,{src,cat,amt,repeat}); if(rowId) existing.id=rowId; }
+      else {
+        if(RULE_BASED_REPEATS.includes(repeat)){
+          const day=repeatDayForMonth({repeat,startDate:date},month);
+          date=`${month}-${String(day).padStart(2,'0')}`;
+        }
+        result.templates.push({id:rowId||`xl_inc_${Date.now()}_${i}`,type:'income',src,cat,amt,repeat,startMonth:month,startDate:date});
+      }
+    } else {
+      result.income.push({id:rowId||`xl_inc_${Date.now()}_${i}`,src,cat,amt,date,month});
+    }
+  });
+
+  // ── Parse Spending sheet ──
+  getRows('Spending').forEach((row,i)=>{
+    const month=parseExcelMonth(row['Month (YYYY-MM)']||row['Month']||row['month']);
+    const src=String(row['Name / Description']||row['Name']||row['Description']||'').trim();
+    const cat=String(row['Category']||'🔮 Other').trim();
+    const amt=parseFloat(String(row['Amount (£)']||row['Amount']||0).replace(/[£,]/g,''));
+    const dateRaw=row['Date (DD/MM/YYYY)']||row['Date']||'';
+    const repeatRaw=String(row['Repeat']||'none').trim();
+    const repeat=normaliseRepeat(repeatRaw);
+
+    if(!month||!amt) return;
+    if(isNaN(amt)||amt<=0){ errors.push(`Spending row ${i+2}: invalid amount`); return; }
+
+    let date=parseExcelDate(dateRaw)||`${month}-01`;
+
+    const spRowId=String(row['ID']||'').trim();
+    if(repeat.startsWith('override:')){
+      const overrideMonth=repeat.replace('override:','');
+      result.overrides.push({id:spRowId||`xl_ov_${Date.now()}_${i}`,type:'spending',src,cat,amt,date,month:overrideMonth,templateId:spRowId||null,overrideMonth});
+    } else if(repeat!=='none'){
+      const existing=result.templates.find(t=>t.type==='spending'&&(t.id===spRowId||(t.src===src&&t.cat===cat&&t.startMonth===month)));
+      if(existing){ Object.assign(existing,{src,cat,amt,repeat}); if(spRowId) existing.id=spRowId; }
+      else {
+        if(RULE_BASED_REPEATS.includes(repeat)){
+          const day=repeatDayForMonth({repeat,startDate:date},month);
+          date=`${month}-${String(day).padStart(2,'0')}`;
+        }
+        result.templates.push({id:spRowId||`xl_sp_${Date.now()}_${i}`,type:'spending',src,cat,amt,repeat,startMonth:month,startDate:date});
+      }
+    } else {
+      result.spending.push({id:spRowId||`xl_sp_${Date.now()}_${i}`,src,cat,amt,date,month});
+    }
+  });
+
+  // ── Parse Accounts sheet ──
+  getRows('Accounts').forEach((row,i)=>{
+    const name=String(row['Account Name']||row['Name']||'').trim();
+    const balance=parseFloat(String(row['Balance (£)']||row['Balance']||0).replace(/[£,]/g,''));
+    const type=String(row['Type']||'checking').trim().toLowerCase();
+    if(!name||isNaN(balance)) return;
+    const accId=String(row['ID']||'').trim(); result.accounts.push({id:accId||`xl_acc_${Date.now()}_${i}`,name,balance,type:['checking','savings','credit','investment'].includes(type)?type:'checking'});
+  });
+
+  xlsxParsedData=result;
+
+  // Show preview
+  const lines=[];
+  if(result.income.length) lines.push(`✓ ${result.income.length} one-off income entries`);
+  if(result.spending.length) lines.push(`✓ ${result.spending.length} one-off spending entries`);
+  if(result.templates.filter(t=>t.type==='income').length) lines.push(`✓ ${result.templates.filter(t=>t.type==='income').length} recurring income templates`);
+  if(result.templates.filter(t=>t.type==='spending').length) lines.push(`✓ ${result.templates.filter(t=>t.type==='spending').length} recurring spending templates`);
+  if(result.overrides&&result.overrides.length) lines.push(`✓ ${result.overrides.length} month overrides`);
+  if(result.accounts.length) lines.push(`✓ ${result.accounts.length} accounts`);
+  if(errors.length) errors.forEach(e=>lines.push(`⚠ ${e}`));
+  if(!lines.length){ lines.push('No data found — check the sheet names and column headers match the template.'); }
+
+  $id('xlsxPreviewContent').innerHTML=lines.map(l=>`<div style="color:${l.startsWith('⚠')?'var(--gold)':l.startsWith('✓')?'var(--green)':'var(--muted)'}">${esc(l)}</div>`).join('');
+  $id('xlsxPreview').style.display='';
+  $id('xlsxImportBtn').style.display=(result.income.length||result.spending.length||result.templates.length||result.accounts.length)?'':'none';
+}
+
+function confirmXlsxImport(){
+  if(!xlsxParsedData) return;
+  const {income,spending,templates,accounts,overrides,deletedIds}=xlsxParsedData;
+  let added=0,updated=0,removed=0;
+
+  income.forEach(e=>{
+    const m=getMonth(e.month);
+    if(e.id&&!e.id.startsWith('xl_')){
+      const ex=m.income.find(x=>x.id===e.id);
+      if(ex){Object.assign(ex,{src:e.src,cat:e.cat,amt:e.amt,date:e.date});updated++;}
+      else{m.income.push({id:e.id,src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;}
+    } else if(!m.income.find(x=>x.src===e.src&&Math.abs(x.amt-e.amt)<0.01&&x.date===e.date)){
+      m.income.push({id:Date.now()+'_'+Math.random().toString(36).slice(2,5),src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;
+    }
+  });
+
+  spending.forEach(e=>{
+    const m=getMonth(e.month);
+    if(e.id&&!e.id.startsWith('xl_')){
+      const ex=m.spending.find(x=>x.id===e.id);
+      if(ex){Object.assign(ex,{src:e.src,cat:e.cat,amt:e.amt,date:e.date});updated++;}
+      else{m.spending.push({id:e.id,src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;}
+    } else if(!m.spending.find(x=>x.src===e.src&&Math.abs(x.amt-e.amt)<0.01&&x.date===e.date)){
+      m.spending.push({id:Date.now()+'_'+Math.random().toString(36).slice(2,5),src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;
+    }
+  });
+
+  if(!D.templates)D.templates=[];
+  templates.forEach(t=>{
+    if(t.id&&!t.id.startsWith('xl_')){
+      const ex=D.templates.find(x=>x.id===t.id);
+      if(ex){Object.assign(ex,{src:t.src,cat:t.cat,amt:t.amt,repeat:t.repeat,startMonth:t.startMonth,startDate:t.startDate});updated++;}
+      else{D.templates.push(t);added++;}
+    } else if(!D.templates.find(x=>x.type===t.type&&x.src===t.src&&x.startMonth===t.startMonth)){
+      D.templates.push({...t,id:Date.now()+'_'+Math.random().toString(36).slice(2,5)});added++;
+    }
+  });
+
+  (overrides||[]).forEach(e=>{
+    const m=getMonth(e.month);
+    const arr=e.type==='income'?m.income:m.spending;
+    const ex=arr.find(x=>x.id===e.id);
+    if(ex){Object.assign(ex,{src:e.src,cat:e.cat,amt:e.amt,date:e.date});updated++;}
+    else{arr.push(e);added++;}
+  });
+
+  (deletedIds||[]).forEach(id=>{
+    Object.values(D.months||{}).forEach(data=>{
+      const bi=(data.income||[]).findIndex(x=>x.id===id);
+      if(bi>=0){data.income.splice(bi,1);removed++;return;}
+      const bs=(data.spending||[]).findIndex(x=>x.id===id);
+      if(bs>=0){data.spending.splice(bs,1);removed++;}
+    });
+    const ti=(D.templates||[]).findIndex(x=>x.id===id);
+    if(ti>=0){D.templates.splice(ti,1);removed++;}
+  });
+
+  if(!D.settings.accounts)D.settings.accounts=[];
+  accounts.forEach(a=>{
+    if(a.id&&!a.id.startsWith('xl_')){
+      const ex=D.settings.accounts.find(x=>x.id===a.id);
+      if(ex){Object.assign(ex,{name:a.name,balance:a.balance,type:a.type});updated++;}
+      else{D.settings.accounts.push(a);added++;}
+    } else {
+      const ex=D.settings.accounts.find(x=>x.name.toLowerCase()===a.name.toLowerCase());
+      if(ex){ex.balance=a.balance;ex.type=a.type;updated++;}
+      else{D.settings.accounts.push({...a,id:Date.now()+'_'+Math.random().toString(36).slice(2,5)});added++;}
+    }
+  });
+
+  save();closeXlsxImport();render();
+  alert(`Import complete!\n✓ ${added} added  ✓ ${updated} updated  ✓ ${removed} removed`);
+}
+
+// ── EXPORT CURRENT DATA TO EXCEL ──
+function exportToExcel(){
+  const wb = XLSX.utils.book_new();
+
+  // ── Income sheet ──
+  const incRows = [['Month (YYYY-MM)','Source / Name','Category','Amount (£)','Date (DD/MM/YYYY)','Repeat','ID']];
+  // One-off income entries from each month
+  Object.entries(D.months||{}).sort().forEach(([month, data])=>{
+    (data.income||[]).filter(e=>!e.templateId&&!e.overrideMonth).forEach(e=>{
+      const dateStr = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
+      incRows.push([month, e.src||'', e.cat||'💼 Income', e.amt, dateStr, 'none', e.id]);
+    });
+  });
+  // Recurring income templates
+  (D.templates||[]).filter(t=>t.type==='income').forEach(t=>{
+    const dateStr = t.startDate ? new Date(t.startDate+'T00:00:00').toLocaleDateString('en-GB') : '';
+    incRows.push([t.startMonth, t.src||'', t.cat||'💼 Income', t.amt, dateStr, repeatLabel(t.repeat)||t.repeat, t.id]);
+    // Month overrides
+    Object.entries(D.months||{}).sort().forEach(([month, data])=>{
+      (data.income||[]).filter(e=>e.templateId===t.id&&e.overrideMonth).forEach(e=>{
+        const ovDate = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
+        incRows.push([month, e.src||t.src||'', e.cat||t.cat||'💼 Income', e.amt, ovDate, 'override:'+month, e.id]);
+      });
+    });
+  });
+
+  // ── Spending sheet ──
+  const spRows = [['Month (YYYY-MM)','Name / Description','Category','Amount (£)','Date (DD/MM/YYYY)','Repeat','ID']];
+  Object.entries(D.months||{}).sort().forEach(([month, data])=>{
+    (data.spending||[]).filter(e=>!e.templateId&&!e.overrideMonth).forEach(e=>{
+      const dateStr = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
+      spRows.push([month, e.src||'', e.cat||'🔮 Other', e.amt, dateStr, 'none', e.id]);
+    });
+  });
+  (D.templates||[]).filter(t=>t.type==='spending').forEach(t=>{
+    const dateStr = t.startDate ? new Date(t.startDate+'T00:00:00').toLocaleDateString('en-GB') : '';
+    spRows.push([t.startMonth, t.src||'', t.cat||'🔮 Other', t.amt, dateStr, repeatLabel(t.repeat)||t.repeat, t.id]);
+    Object.entries(D.months||{}).sort().forEach(([month, data])=>{
+      (data.spending||[]).filter(e=>e.templateId===t.id&&e.overrideMonth).forEach(e=>{
+        const ovDate = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
+        spRows.push([month, e.src||t.src||'', e.cat||t.cat||'🔮 Other', e.amt, ovDate, 'override:'+month, e.id]);
+      });
+    });
+  });
+
+  // ── Accounts sheet ──
+  const accRows = [['Account Name','Balance (£)','Type','ID']];
+  (D.settings.accounts||[]).forEach(a=>{
+    accRows.push([a.name, a.balance, a.type, a.id]);
+  });
+
+  // ── Settings sheet ──
+  const settRows = [
+    ['Setting','Value'],
+    ['Name', D.settings.name||''],
+    ['Monthly Savings Goal (£)', D.settings.goal||2000],
+  ];
+
+  // ── Notes sheet ──
+  const noteRows = [
+    ['HOW TO USE THIS FILE'],
+    [''],
+    ['1. Edit any rows in Income, Spending or Accounts sheets'],
+    ['2. You can add new rows — leave the ID column blank for new entries'],
+    ['3. To delete an entry, delete the entire row'],
+    ['4. Upload the file back using ⬆ Import Excel in the app'],
+    ['5. Import merges by ID — existing entries are updated, new rows are added'],
+    [''],
+    ['REPEAT OPTIONS (Repeat column):'],
+    ['Code','Plain English'],
+    ['none','Does not repeat'],
+    ['monthly','Monthly (same date)'],
+    ['quarterly','Every 3 months'],
+    ['biannually','Every 6 months'],
+    ['annually','Annually'],
+    ['day_1','1st of every month'],
+    ['day_8','8th of every month'],
+    ['day_15','15th of every month'],
+    ['day_last','Last day of every month'],
+    ['work_1','1st working day of month'],
+    ['work_2','2nd working day of month'],
+    ['work_3','3rd working day of month'],
+    ['work_last','Last working day of month'],
+    [''],
+    ['CATEGORY OPTIONS:'],
+    ['🏠 Housing','🍔 Food','🚗 Transport','💡 Utilities','🛒 Shopping','🎮 Entertainment'],
+    ['💊 Health','🎓 Education','✈️ Holidays','👨‍👩‍👧 Family','💳 Debt Payments','📈 Investments','🔮 Other'],
+    [''],
+    ['ACCOUNT TYPE OPTIONS: checking, savings, credit, investment'],
+  ];
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incRows), 'Income');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(spRows), 'Spending');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(accRows), 'Accounts');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(settRows), 'Settings');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(noteRows), 'Notes');
+
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `ledger-export-${today}.xlsx`);
+}
+</script>
 <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
 <script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
 </body>
