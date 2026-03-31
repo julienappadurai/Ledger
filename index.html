@@ -273,10 +273,10 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
       <div class="msub">Upload a file from your bank — CSV or Excel</div>
       <div class="field"><label>Account</label><select id="impAcct"></select></div>
       <div class="dz" id="dz" onclick="document.getElementById('fi').click()">
-        <input type="file" id="fi" accept=".csv,.txt,.xls,.xlsx,.ofx,.qfx">
+        <input type="file" id="fi" accept=".csv,.xls,.xlsx,.ofx,.qfx">
         <div style="font-size:32px;margin-bottom:10px;">📂</div>
         <div style="font-size:14px;font-weight:500;margin-bottom:5px;">Click or drag &amp; drop</div>
-        <div style="font-size:12px;color:#7a7870;">CSV · TXT · Excel (.xlsx) · OFX</div>
+        <div style="font-size:12px;color:#7a7870;">CSV · Excel (.xls/.xlsx) · OFX</div>
       </div>
       <div style="margin-top:12px;font-size:12px;color:#7a7870;line-height:1.9;background:#1e1f1d;border-radius:8px;padding:12px;">
         <strong style="color:#e8e6df;display:block;margin-bottom:3px;">How to export</strong>
@@ -667,17 +667,21 @@ async function handleFile(f){
   if(!I.accId){alert('Please select an account.');return;}
   $id('ip2sub').textContent='File: '+f.name+' — adjust any column that looks wrong.';
   const ext=f.name.split('.').pop().toLowerCase();
-  if(ext==='csv'||ext==='txt'){
-    const txt=await f.text();
-    if(isBlockFormat(txt)){parseBlockFormat(txt);}
-    else{parseCSV(txt);}
-  }
+  if(ext==='csv'){parseCSV(await f.text());}
   else if(ext==='xlsx'||ext==='xls'){
-    const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
-    I.hdrs=rows[0].map(String);
-    I.rows=rows.slice(1).filter(r=>r.some(c=>c!==''&&c!=null));
-    buildMap();
+    const buf=await f.arrayBuffer();
+    const bytes=new Uint8Array(buf);
+    // Check if it's HTML disguised as XLS (Santander style)
+    const head=new TextDecoder('utf-8',{fatal:false}).decode(bytes.slice(0,20)).toLowerCase();
+    if(head.includes('<!doctype')||head.includes('<html')){
+      parseHtmlXls(new TextDecoder('iso-8859-1').decode(bytes));
+    } else {
+      const wb=XLSX.read(buf,{type:'array'});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      I.hdrs=rows[0].map(String);
+      I.rows=rows.slice(1).filter(r=>r.some(c=>c!==''&&c!=null));
+      buildMap();
+    }
   }else if(ext==='ofx'||ext==='qfx'){parseOFX(await f.text());}
   else{alert('Please upload CSV or Excel.');return;}
   iStep(2);
@@ -723,6 +727,332 @@ function parseCSV(txt){
   I.rows=lines.slice(1).map(l=>splitRow(l,sep)).filter(r=>r.some(c=>c!==''));
   buildMap();
 }
+
+function parseOFX(txt){
+  const blocks=txt.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)||[];
+  if(!blocks.length){alert('Cannot parse OFX — please export as CSV.');return;}
+  const g=(b,t)=>{const m=b.match(new RegExp('<'+t+'>([^<\n]+)','i'));return m?m[1].trim():'';};
+  I.hdrs=['DATE','DESCRIPTION','AMOUNT','TYPE'];
+  I.rows=blocks.map(b=>[g(b,'DTPOSTED').slice(0,8),g(b,'NAME')||g(b,'MEMO'),g(b,'TRNAMT'),g(b,'TRNTYPE')]);
+  buildMap();
+  setTimeout(()=>{sMap('date','0');sMap('description','1');sMap('amount','2');},50);
+}
+
+function isBlockFormat(txt){
+  // Detect Santander-style block format: lines like "Date: X", "Amount: Y" etc.
+  const lines=txt.replace(/\xa0/g,' ').replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  let dateCount=0, amtCount=0;
+  lines.forEach(l=>{
+    const t=l.trim();
+    if(/^Date[:\s]/i.test(t)) dateCount++;
+    if(/^Amount[:\s]/i.test(t)) amtCount++;
+  });
+  return dateCount>=2 && amtCount>=2;
+}
+
+function parseBlockFormat(txt){
+  // Parse Santander/Nationwide style: repeating Date/Description/Amount/Balance blocks
+  const lines=txt.replace(/\xa0/g,' ').replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  const records=[];
+  let cur={};
+  lines.forEach(line=>{
+    const t=line.trim();
+    if(!t) return;
+    // Match "Key: Value" pattern
+    const m=t.match(/^([A-Za-z\/]+)[:\s]+(.+)$/);
+    if(!m) return;
+    const key=m[1].trim().toLowerCase().replace(/[^a-z]/g,'');
+    const val=m[2].trim();
+    if(key==='date'){
+      // New record starting
+      if(cur.date) records.push({...cur});
+      cur={date:val};
+    } else if(key==='description'||key==='desc'||key==='details'||key==='narrative'||key==='merchantdescription'){
+      cur.description=val;
+    } else if(key==='amount'){
+      cur.amount=val;
+    } else if(key==='balance'){
+      cur.balance=val;
+    } else if(key==='type'){
+      cur.type=val;
+    }
+  });
+  if(cur.date) records.push(cur);
+
+  if(!records.length){alert('Could not parse this file format.');return;}
+
+  // Convert to rows + headers format
+  I.hdrs=['Date','Description','Amount','Balance'];
+  I.rows=records.map(r=>[r.date||'',r.description||'',r.amount||'',r.balance||'']);
+  buildMap();
+  // Auto-map all columns
+  setTimeout(()=>{
+    sMap('date','0');
+    sMap('description','1');
+    sMap('amount','2');
+    sMap('balance','3');
+    setAmode('single');
+  },50);
+}
+
+const FLDS=[
+  {k:'date',lbl:'Date',req:true},
+  {k:'description',lbl:'Description',req:true},
+  {k:'amount',lbl:'Amount',req:false,hint:'Single column mode'},
+  {k:'debit',lbl:'Money Out (Debit)',req:false,hint:'Split mode'},
+  {k:'credit',lbl:'Money In (Credit)',req:false,hint:'Split mode'},
+  {k:'balance',lbl:'Running Balance',req:false},
+  {k:'category',lbl:'Category',req:false},
+  {k:'reference',lbl:'Reference',req:false},
+];
+
+function buildMap(){
+  const no='<option value="">— ignore —</option>';
+  const opts=I.hdrs.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join('');
+  const body=$id('mapBody');body.innerHTML='';
+  FLDS.forEach(f=>{
+    const tr=document.createElement('tr');tr.id='mr_'+f.k;
+    tr.innerHTML=`<td>${f.lbl}${f.req?'<span style="color:#e05c5c"> *</span>':''}<br>${f.hint?`<span style="font-size:10px;color:#7a7870;">${f.hint}</span>`:''}</td>
+      <td><select id="m_${f.k}">${no}${opts}</select></td>`;
+    body.appendChild(tr);
+  });
+  autoMap(I.hdrs);
+  buildPv();
+  updAmode();
+}
+
+function autoMap(hdrs){
+  const lo=hdrs.map(h=>h.toLowerCase());
+  const best=(...kws)=>{for(const kw of kws){const i=lo.findIndex(h=>h.includes(kw));if(i>=0)return String(i);}return '';};
+  sMap('date',best('date','transaction date','posted','value date','booking date'));
+  sMap('description',best('description','narrative','details','memo','payee','merchant','name','particulars'));
+  sMap('amount',best('amount','value','transaction amount','net amount'));
+  sMap('debit',best('debit','money out','withdrawals','paid out','charge'));
+  sMap('credit',best('credit','money in','deposits','paid in'));
+  sMap('balance',best('balance','running balance','closing balance'));
+  sMap('category',best('category','type','merchant category'));
+  sMap('reference',best('reference','ref','notes','note','memo'));
+  const hd=$id('m_debit').value!=='', hc=$id('m_credit').value!=='';
+  setAmode(hd||hc?'split':'single');
+}
+
+function sMap(k,v){const e=$id('m_'+k);if(e&&v!=='')e.value=v;}
+function gMap(k){const v=$id('m_'+k)?.value;return v===''?-1:parseInt(v);}
+function setAmode(m){
+  I.mode=m;
+  $id('rSingle').classList.toggle('on',m==='single');
+  $id('rSplit').classList.toggle('on',m==='split');
+  updAmode();
+}
+function updAmode(){
+  const s=I.mode==='split';
+  const dim=(id,d)=>{const e=$id('mr_'+id);if(e)e.style.opacity=d?'0.3':'1';};
+  dim('amount',s);dim('debit',!s);dim('credit',!s);
+}
+function buildPv(){
+  $id('pvTbl').innerHTML='<thead><tr>'+I.hdrs.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead>'
+    +'<tbody>'+I.rows.slice(0,5).map(r=>'<tr>'+r.map(c=>`<td>${esc(String(c).slice(0,24))}</td>`).join('')+'</tr>').join('')+'</tbody>';
+}
+
+function doMap(){
+  if(gMap('date')<0||gMap('description')<0)return alert('Please map Date and Description.');
+  if(I.mode==='single'&&gMap('amount')<0)return alert('Please map Amount column.');
+  if(I.mode==='split'&&gMap('debit')<0&&gMap('credit')<0)return alert('Please map Debit or Credit column.');
+  I.accId=$id('impAcct').value;
+  const parsed=[], dates=[];
+  I.rows.forEach((row,ri)=>{
+    const rawD=String(row[gMap('date')]||'').trim();
+    const desc=(String(row[gMap('description')]||'').trim())||'Transaction';
+    const ri2=gMap('reference'), ci=gMap('category'), bi=gMap('balance');
+    const ref=ri2>=0?String(row[ri2]||'').trim():'';
+    const catR=ci>=0?String(row[ci]||'').trim():'';
+    const bal=bi>=0?parseFloat(String(row[bi]).replace(/[£$€,\s]/g,'').replace(/\+/g,'').replace(/[^0-9.\-]/g,''))||null:null;
+    let amount=0,type='expense';
+    if(I.mode==='single'){
+      const raw=String(row[gMap('amount')]||'').replace(/[£$€,\s]/g,'').replace(/\+/g,'').replace(/[^0-9.\-]/g,'');
+      const v=parseFloat(raw)||0;amount=Math.abs(v);type=v>=0?'income':'expense';
+    }else{
+      const di=gMap('debit'),cri=gMap('credit');
+      const deb=di>=0?Math.abs(parseFloat(String(row[di]||'').replace(/[£$€,\s+]/g,'').replace(/[^0-9.\-]/g,''))||0):0;
+      const cre=cri>=0?Math.abs(parseFloat(String(row[cri]||'').replace(/[£$€,\s+]/g,'').replace(/[^0-9.\-]/g,''))||0):0;
+      if(cre>0){amount=cre;type='income';}else if(deb>0){amount=deb;type='expense';}
+    }
+    if(!amount)return;
+    const d=pDate(rawD);if(d)dates.push(d);
+    let month=S.activeMonth;
+    if(d)month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    parsed.push({id:`i_${Date.now()}_${ri}_${Math.random().toString(36).slice(2,6)}`,desc:ref?`${desc} – ${ref}`:desc,amount,type,accountId:I.accId,category:catR?gCat(catR):gCat(desc),month,date:d?d.toISOString():new Date().toISOString(),_bal:bal});
+  });
+  if(!parsed.length)return alert('No transactions found. Check your column mapping.');
+  I.txs=parsed;
+  I.hasBal=gMap('balance')>=0&&parsed.some(t=>t._bal!=null);
+  I.earliestDate=dates.length?new Date(Math.min(...dates)):null;
+  I.latestDate=dates.length?new Date(Math.max(...dates)):null;
+  I.netChange=parsed.reduce((s,t)=>s+(t.type==='income'?t.amount:-t.amount),0);
+  I.lastFileBal=parsed.filter(t=>t._bal!=null).pop()?._bal||null;
+  buildBalStep();
+  iStep(3);
+}
+
+function fmtD(d){return d?d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'unknown date';}
+
+function buildBalStep(){
+  const acc=S.accounts.find(a=>a.id===I.accId);
+  const first=!acc.importCount||acc.importCount===0;
+  const title=$id('ip3title'), sub=$id('ip3sub'), body=$id('ip3body');
+  if(I.hasBal){
+    title.textContent='Confirm Balance';
+    sub.textContent=`Your file includes a balance column. The latest value is ${fmt(I.lastFileBal)} as of ${fmtD(I.latestDate)}.`;
+    body.innerHTML=`<div class="balbox"><div class="balbox-title">Balance from file</div><div class="balbox-val">${fmt(I.lastFileBal)}</div><div class="balbox-sub">As of ${fmtD(I.latestDate)}</div><div class="balbox-warn">Please verify this matches your actual bank balance.</div></div>
+      <div class="field"><label>Confirm or correct (£)</label><input type="number" id="cbv" value="${I.lastFileBal.toFixed(2)}" step="0.01"></div>`;
+  }else if(first){
+    title.textContent='Opening & Closing Balance';
+    sub.textContent=`First import for ${acc.name}. Since the file has no balance column, please enter the balances at the start and end of this file.`;
+    body.innerHTML=`<div class="field"><label>Balance at start of file (${fmtD(I.earliestDate)}) £</label><input type="number" id="obv" placeholder="e.g. 1250.00" step="0.01"></div>
+      <div class="field"><label>Balance at end of file (${fmtD(I.latestDate)}) £</label><input type="number" id="cbv" placeholder="e.g. 1840.00" step="0.01"></div>
+      <div style="font-size:12px;color:#7a7870;background:#1e1f1d;border-radius:7px;padding:10px 12px;line-height:1.7;">💡 Find these on your bank statement or app. Opening balance is just before the first transaction in the file.</div>`;
+  }else{
+    const proj=acc.balance+I.netChange;
+    title.textContent='Projected Balance';
+    sub.textContent=`Based on existing records and this file, here is the projected new balance for ${acc.name}.`;
+    body.innerHTML=`<div class="balbox"><div class="balbox-title">Current balance on record</div><div class="balbox-val">${fmt(acc.balance)}</div><div class="balbox-sub">Before this import</div></div>
+      <div style="font-size:12px;color:#7a7870;margin:10px 0;">Net change from file: <span style="color:${I.netChange>=0?'#4caf7d':'#e05c5c'}">${fmt(I.netChange,true)}</span></div>
+      <div class="balbox"><div class="balbox-title">Projected balance after import</div><div class="balbox-val" style="color:${proj>=0?'#e8c97a':'#e05c5c'}">${fmt(proj)}</div><div class="balbox-sub">As of ${fmtD(I.latestDate)}</div><div class="balbox-warn">Does this match your actual bank balance? Correct it below if not.</div></div>
+      <div class="field"><label>Correct if needed (£)</label><input type="number" id="cbv" value="${proj.toFixed(2)}" step="0.01"></div>`;
+  }
+}
+
+function fromBalStep(){
+  const acc=S.accounts.find(a=>a.id===I.accId);
+  const first=!acc.importCount||acc.importCount===0;
+  const cb=parseFloat($id('cbv')?.value);
+  if(isNaN(cb))return alert('Please enter a valid balance.');
+  I.confirmedEndBal=cb;
+  if(first&&!I.hasBal){
+    const ob=parseFloat($id('obv')?.value);
+    if(isNaN(ob))return alert('Please enter the opening balance.');
+    I.confirmedOpenBal=ob;
+  }
+  buildReview();
+  iStep(4);
+}
+
+function buildReview(){
+  const txs=I.txs;
+  const inc=txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const exp=txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const net=inc-exp;
+  $id('rv0').textContent=txs.length;
+  $id('rv1').textContent=fmt(inc);
+  $id('rv2').textContent=fmt(exp);
+  $id('rv3').textContent=fmt(net);
+  $id('rv3').style.color=net>=0?'#4caf7d':'#e05c5c';
+  $id('rvTbl').innerHTML='<thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Type</th><th>Amount</th></tr></thead><tbody>'
+    +txs.map(t=>`<tr><td>${t.date?new Date(t.date).toLocaleDateString('en-GB'):''}</td><td title="${esc(t.desc)}">${esc(t.desc.slice(0,28))}${t.desc.length>28?'…':''}</td><td>${esc(t.category)}</td><td style="color:${t.type==='income'?'#4caf7d':'#e05c5c'};font-family:'DM Mono',monospace;font-size:10px;">${t.type}</td><td class="tx-amt ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'−'}${fmt(t.amount)}</td></tr>`).join('')+'</tbody>';
+  const ex=new Set(S.transactions.map(t=>t.desc+'|'+t.amount+'|'+t.month));
+  const dups=txs.filter(t=>ex.has(t.desc+'|'+t.amount+'|'+t.month));
+  const w=$id('dupWarn');
+  if(dups.length){w.style.display='';w.innerHTML=`<div style="background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:7px;padding:9px 12px;font-size:12px;color:#c9a84c;">⚠ ${dups.length} transaction${dups.length>1?'s':''} may already exist and will still be imported.</div>`;}
+  else w.style.display='none';
+}
+
+function doImport(){
+  const acc=S.accounts.find(a=>a.id===I.accId);
+  acc.balance=I.confirmedEndBal;
+  if(I.confirmedOpenBal!=null&&(!acc.importCount||acc.importCount===0)){
+    acc.openingBalance=I.confirmedOpenBal;
+    acc.openingDate=I.earliestDate?I.earliestDate.toISOString():null;
+  }
+  acc.importCount=(acc.importCount||0)+1;
+  I.txs.forEach(t=>{const{_bal,...tx}=t;S.transactions.push(tx);});
+  save();closeImp();render();
+  alert(`Imported ${I.txs.length} transactions. Balance set to ${fmt(acc.balance)}.`);
+}
+
+// ═══════ HELPERS ═══════
+function pDate(s){
+  if(!s)return null;
+  if(/^\d{5}$/.test(s.trim())){const d=new Date((parseInt(s)-25569)*86400*1000);return isNaN(d)?null:d;}
+  let m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(m){const y=m[3].length===2?'20'+m[3]:m[3];const d=new Date(`${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);if(!isNaN(d))return d;}
+  m=s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if(m){const d=new Date(`${m[1]}-${m[2]}-${m[3]}`);if(!isNaN(d))return d;}
+  const d=new Date(s);return isNaN(d)?null:d;
+}
+function gCat(h){
+  h=(h||'').toLowerCase();
+  if(/salary|payroll|wages|bacs in|income/.test(h))return '💼 Income';
+  if(/tesco|sainsbury|waitrose|aldi|lidl|asda|morrisons|coop|grocery|supermarket|food|cafe|coffee|restaurant|takeaway|dominos|pizza|kfc|mcdonald|greggs|pret|nandos|uber eat|deliveroo|just eat/.test(h))return '🍔 Food';
+  if(/rent|mortgage|council tax|water|gas|electric|broadband|bt |sky |virgin media/.test(h))return '🏠 Housing';
+  if(/tfl|tube|bus|train|rail|petrol|parking|uber|bolt|taxi|fuel|shell|bp /.test(h))return '🚗 Transport';
+  if(/amazon|ebay|asos|next |h&m|primark|argos|boots|john lewis/.test(h))return '🛒 Shopping';
+  if(/netflix|spotify|apple|cinema|disney|game|steam|playstation|xbox/.test(h))return '🎮 Entertainment';
+  if(/gym|health|doctor|pharmacy|dentist|nhs|bupa/.test(h))return '💊 Health';
+  if(/student|course|university|college|education|tuition/.test(h))return '🎓 Education';
+  if(/transfer|credit card|repayment|loan/.test(h))return '💳 Debt Payment';
+  if(/isa|invest|trading|freetrade|vanguard|hargreaves|fidelity/.test(h))return '📈 Investment';
+  return '🔮 Other';
+}
+</script>
+
+<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" onerror="showAuth('Could not load Google API. Check your connection.')"></script>
+<script src="https://accounts.google.com/gsi/client" onload="gsiLoaded()" async defer></script>
+</body>
+</html>function parseHtmlXls(html){
+  // Parse Santander HTML-disguised XLS
+  // td positions per data row: [0]=date [1]=desc [2]=money_in [3]=money_out [4]=balance
+  function clean(s){
+    s=(s||'').replace(/<[^>]+>/g,' ').replace(/ï¿½/g,'').replace(/\xa0/g,'').replace(/&nbsp;/g,'').replace(/,/g,'');
+    return s.replace(/\s+/g,' ').trim();
+  }
+  const rowMatches=html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi)||[];
+  const records=[];
+  rowMatches.forEach(row=>{
+    // Match ALL tds including self-closing
+    const tds=[];
+    const re1=/<td[^>]*(?:>([\s\S]*?)<\/td>|\/>)/gi;
+    let m;
+    while((m=re1.exec(row))!==null) tds.push(clean(m[1]||''));
+    if(tds.length<5) return;
+    if(!/^\d{2}\/\d{2}\/\d{4}$/.test(tds[0])) return;
+    const date=tds[0], desc=tds[1];
+    const moneyIn=tds[2].replace(/[^\d.]/g,'');
+    const moneyOut=tds[3].replace(/[^\d.]/g,'');
+    const balance=tds[4].replace(/[^\d.]/g,'');
+    let amount=0, type='expense';
+    if(moneyIn){amount=parseFloat(moneyIn);type='income';}
+    else if(moneyOut){amount=parseFloat(moneyOut);type='expense';}
+    else return;
+    records.push({date,desc,amount,type,balance:balance?parseFloat(balance):null});
+  });
+  if(!records.length){alert('Could not parse this Santander file. Please try a CSV export instead.');return;}
+  // Convert to standard rows format and skip column mapping — we know the structure
+  const parsed=[];
+  records.forEach((r,ri)=>{
+    const d=pDate(r.date);
+    let month=S.activeMonth;
+    if(d) month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    parsed.push({
+      id:`i_${Date.now()}_${ri}_${Math.random().toString(36).slice(2,6)}`,
+      desc:r.desc, amount:r.amount, type:r.type,
+      accountId:I.accId, category:gCat(r.desc),
+      month, date:d?d.toISOString():new Date().toISOString(),
+      _bal:r.balance
+    });
+  });
+  if(!parsed.length){alert('No transactions found.');return;}
+  I.txs=parsed;
+  I.hasBal=records.some(r=>r.balance!=null);
+  const dates=records.map(r=>pDate(r.date)).filter(Boolean);
+  I.earliestDate=dates.length?new Date(Math.min(...dates)):null;
+  I.latestDate=dates.length?new Date(Math.max(...dates)):null;
+  I.netChange=parsed.reduce((s,t)=>s+(t.type==='income'?t.amount:-t.amount),0);
+  I.lastFileBal=records.filter(r=>r.balance!=null).pop()?.balance||null;
+  // Skip straight to balance step
+  buildBalStep();
+  iStep(3);
+}
+
 
 function parseOFX(txt){
   const blocks=txt.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)||[];
