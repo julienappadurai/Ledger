@@ -1378,7 +1378,7 @@ function renderIncomPanel(){
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${r.exclude?'var(--muted)':'var(--green)'};cursor:pointer;opacity:${r.exclude?0.6:1};" onclick='editIncome("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
-  if(!month.income.length){
+  if(!incEntries.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No income added yet. Tap + to add.</div>';
   }
   $id('incomeTotal').textContent=fmt(viewMode==='payperiod'&&activePeriod?totalIncomeForPeriod(activePeriod):totalIncomeEff(activeMonth));
@@ -1400,7 +1400,7 @@ function renderSpendPanel(){
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${r.exclude?'var(--muted)':'var(--red)'};cursor:pointer;opacity:${r.exclude?0.6:1};" onclick='editCat("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
-  if(!month.spending.length){
+  if(!spEntries.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No spending added yet. Tap + to add.</div>';
   }
   $id('spendTotal').textContent=fmt(viewMode==='payperiod'&&activePeriod?totalSpendingForPeriod(activePeriod):totalSpendingEff(activeMonth));
