@@ -244,6 +244,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div class="hbtns">
       <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
+      <button class="hbtn nav-btn" id="navNetWorth" onclick="showView('networth')">◈ Net Worth</button>
       <button class="hbtn" onclick="openXlsxImport()">⬆ Import Excel</button>
       <button class="hbtn" onclick="exportToExcel()">⬇ Export Data</button>
       <button class="hbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀</button>
@@ -350,9 +351,54 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <div style="font-size:11px;color:var(--muted);">Tap any cell to edit that month · Tap the name to edit the series</div>
     </div>
     <div id="timelineWrap" style="overflow-x:auto;"></div>
+  </div><!-- end viewRecurring -->
+
+  <!-- NET WORTH VIEW -->
+  <div id="viewNetWorth" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">Account Balance History</div>
+      <button class="hbtn" onclick="openAddSnapshot()" style="color:var(--gold);border-color:rgba(201,168,76,.3);">+ Record Balance</button>
+    </div>
+
+    <!-- Summary stat -->
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;" id="nwStats"></div>
+
+    <!-- Line chart -->
+    <div class="chart-wrap" style="margin-bottom:24px;">
+      <div class="chart-title">Net Worth Over Time</div>
+      <div id="nwChart" style="position:relative;height:160px;"></div>
+      <div id="nwLegend" class="legend" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- Per-account history tables -->
+    <div id="nwAccountTables"></div>
   </div>
 
 </div>
+</div>
+
+<!-- ADD SNAPSHOT MODAL -->
+<div class="ov" id="snapshotOv">
+  <div class="modal" style="max-width:400px;">
+    <h2 id="snapshotModalTitle">Record Balance</h2>
+    <div class="field">
+      <label>Account</label>
+      <select id="snapAccount"></select>
+    </div>
+    <div class="field">
+      <label>Balance (£)</label>
+      <input type="number" id="snapBalance" step="0.01" placeholder="0.00">
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="snapDate">
+    </div>
+    <div class="mbtns">
+      <button class="mbtn-g" onclick="closeAddSnapshot()">Cancel</button>
+      <button class="mbtn-d" id="snapDelBtn" style="display:none;" onclick="deleteSnapshot()">Delete</button>
+      <button class="mbtn-p" onclick="saveSnapshot()">Save</button>
+    </div>
+  </div>
 </div>
 
 <!-- CELL EDIT MODAL -->
@@ -1239,7 +1285,7 @@ function renderStats(){
   const allMonthKeys=getAllMonthKeys();
   const yearSaved=[...allMonthKeys].filter(k=>k.startsWith(y)).reduce((s,k)=>s+savedEff(k),0);
   const monthCount=[...allMonthKeys].filter(k=>k.startsWith(y)&&(totalIncomeEff(k)||totalSpendingEff(k))).length;
-  const netWorth=D.settings.accounts.reduce((s,a)=>s+a.balance,0);
+  const netWorth=D.settings.accounts.reduce((s,a)=>s+currentAccountBalance(a),0);
 
   $id('sSavedLabel').textContent='Saved '+periodLabel; const el=$id('sSaved'); el.textContent=fmt(sv); el.className='stat-val '+(sv>=0?'g':'r');
   $id('sSavedSub').textContent=inc>0?`of ${fmt(inc)} income`:'No income entered';
@@ -1672,27 +1718,272 @@ $id('settingsOv').addEventListener('click',e=>{ if(e.target===$id('settingsOv'))
 function renderAccountList(){
   const list=$id('accountList'); list.innerHTML='';
   D.settings.accounts.forEach(a=>{
-    const row=document.createElement('div');
-    row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:8px;';
-    row.innerHTML=`<input value="${esc(a.name)}" placeholder="Account name" style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;" oninput="updateAccount('${a.id}','name',this.value)">
-      <input type="number" value="${a.balance}" placeholder="£0" style="width:110px;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;text-align:right;" oninput="updateAccount('${a.id}','balance',this.value)">
-      <button onclick="removeAccount('${a.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:0 4px;line-height:1;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>`;
-    list.appendChild(row);
+    if(!a.history) a.history=[];
+    const sorted=[...a.history].sort((x,y)=>y.date.localeCompare(x.date));
+    const wrap=document.createElement('div');
+    wrap.style.cssText='margin-bottom:16px;background:var(--s2);border-radius:8px;padding:12px;';
+    // Account name row
+    wrap.innerHTML=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <input value="${esc(a.name)}" placeholder="Account name" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;" oninput="updateAccount('${a.id}','name',this.value)">
+      <button onclick="removeAccount('${a.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:0 4px;line-height:1;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>
+    </div>
+    <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Balance History</div>
+    <div id="histList_${a.id}">${sorted.length?sorted.map(e=>`
+      <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);min-width:90px;">${e.date}</span>
+        <span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--text);flex:1;">${fmt(e.balance)}</span>
+        <button onclick="removeSnapshot('${a.id}','${e.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 4px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>
+      </div>`).join(''):'<div style="font-size:12px;color:var(--muted);padding:4px 0;">No entries yet</div>'}</div>
+    <button onclick="openAddSnapshotForAccount('${a.id}')" style="width:100%;margin-top:8px;padding:7px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Add Balance Entry</button>`;
+    list.appendChild(wrap);
   });
 }
+
 function addAccount(){
-  D.settings.accounts.push({id:Date.now().toString(),name:'',balance:0});
+  D.settings.accounts.push({id:Date.now().toString(),name:'',history:[]});
   renderAccountList();
 }
 function updateAccount(id,field,val){
   const a=D.settings.accounts.find(x=>x.id===id);
   if(!a) return;
   if(field==='name') a.name=val;
-  if(field==='balance') a.balance=parseFloat(val)||0;
 }
 function removeAccount(id){
   D.settings.accounts=D.settings.accounts.filter(x=>x.id!==id);
   renderAccountList();
+}
+function removeSnapshot(accountId, entryId){
+  const a=D.settings.accounts.find(x=>x.id===accountId);
+  if(!a) return;
+  a.history=(a.history||[]).filter(e=>e.id!==entryId);
+  renderAccountList();
+}
+
+// ── CURRENT BALANCE HELPER ──
+function currentAccountBalance(account){
+  if(!account.history||!account.history.length) return account.balance||0;
+  const sorted=[...account.history].sort((a,b)=>b.date.localeCompare(a.date));
+  return sorted[0].balance;
+}
+
+// ═══════════════════════════════════════════════
+// NET WORTH VIEW
+// ═══════════════════════════════════════════════
+let editingSnapshot=null;
+
+function openAddSnapshot(){
+  editingSnapshot=null;
+  $id('snapshotModalTitle').textContent='Record Balance';
+  $id('snapDelBtn').style.display='none';
+  // Populate account dropdown
+  const sel=$id('snapAccount'); sel.innerHTML='';
+  D.settings.accounts.forEach(a=>{
+    const o=document.createElement('option');
+    o.value=a.id; o.textContent=a.name||'Unnamed account';
+    sel.appendChild(o);
+  });
+  $id('snapBalance').value='';
+  $id('snapDate').value=new Date().toISOString().slice(0,10);
+  $id('snapshotOv').classList.add('on');
+}
+
+function openAddSnapshotForAccount(accountId){
+  openAddSnapshot();
+  $id('snapAccount').value=accountId;
+}
+
+function openEditSnapshot(accountId, entryId){
+  const a=D.settings.accounts.find(x=>x.id===accountId);
+  const e=a&&(a.history||[]).find(x=>x.id===entryId);
+  if(!a||!e) return;
+  editingSnapshot={accountId,entryId};
+  $id('snapshotModalTitle').textContent='Edit Balance Entry';
+  $id('snapDelBtn').style.display='';
+  const sel=$id('snapAccount'); sel.innerHTML='';
+  D.settings.accounts.forEach(ac=>{
+    const o=document.createElement('option');
+    o.value=ac.id; o.textContent=ac.name||'Unnamed account';
+    sel.appendChild(o);
+  });
+  $id('snapAccount').value=accountId;
+  $id('snapBalance').value=e.balance;
+  $id('snapDate').value=e.date;
+  $id('snapshotOv').classList.add('on');
+}
+
+function closeAddSnapshot(){ $id('snapshotOv').classList.remove('on'); }
+$id('snapshotOv').addEventListener('click',e=>{ if(e.target===$id('snapshotOv')) closeAddSnapshot(); });
+
+function saveSnapshot(){
+  const accountId=$id('snapAccount').value;
+  const balance=parseFloat($id('snapBalance').value);
+  const date=$id('snapDate').value;
+  if(!accountId||isNaN(balance)||!date){ alert('Please fill in all fields.'); return; }
+  const a=D.settings.accounts.find(x=>x.id===accountId);
+  if(!a) return;
+  if(!a.history) a.history=[];
+  if(editingSnapshot){
+    // Update existing
+    const e=a.history.find(x=>x.id===editingSnapshot.entryId);
+    if(e){ e.balance=balance; e.date=date; }
+  } else {
+    // Remove any existing entry for same date on same account
+    a.history=a.history.filter(e=>e.date!==date);
+    a.history.push({id:Date.now().toString(),balance,date});
+  }
+  save(); closeAddSnapshot(); renderNetWorth(); render();
+  // Refresh account list if settings open
+  if($id('settingsOv').classList.contains('on')) renderAccountList();
+}
+
+function deleteSnapshot(){
+  if(!editingSnapshot) return;
+  const a=D.settings.accounts.find(x=>x.id===editingSnapshot.accountId);
+  if(a) a.history=(a.history||[]).filter(e=>e.id!==editingSnapshot.entryId);
+  save(); closeAddSnapshot(); renderNetWorth(); render();
+  if($id('settingsOv').classList.contains('on')) renderAccountList();
+}
+
+function getAllSnapshotDates(){
+  const dates=new Set();
+  D.settings.accounts.forEach(a=>(a.history||[]).forEach(e=>dates.add(e.date)));
+  return [...dates].sort();
+}
+
+function totalNetWorthAt(date){
+  return D.settings.accounts.reduce((sum,a)=>{
+    const entries=(a.history||[]).filter(e=>e.date<=date).sort((x,y)=>y.date.localeCompare(x.date));
+    if(entries.length) return sum+entries[0].balance;
+    return sum+(a.balance||0);
+  },0);
+}
+
+function renderNetWorth(){
+  const accounts=D.settings.accounts;
+  const dates=getAllSnapshotDates();
+
+  // ── Stats ──
+  const statsEl=$id('nwStats');
+  const current=accounts.reduce((s,a)=>s+currentAccountBalance(a),0);
+  const prev=dates.length>=2?totalNetWorthAt(dates[dates.length-2]):null;
+  const change=prev!==null?current-prev:null;
+  statsEl.innerHTML=`
+    <div class="stat-card highlight"><div class="stat-label">Current Net Worth</div><div class="stat-val ${current>=0?'':'r'}">${fmt(current)}</div><div class="stat-sub">${accounts.length} account${accounts.length!==1?'s':''}</div></div>
+    <div class="stat-card"><div class="stat-label">Last Change</div><div class="stat-val ${change===null?'':change>=0?'g':'r'}">${change===null?'—':fmtSign(change)}</div><div class="stat-sub">${dates.length>=2?'since '+new Date(dates[dates.length-2]+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'Add more snapshots'}</div></div>
+    <div class="stat-card"><div class="stat-label">Snapshots</div><div class="stat-val b">${dates.length}</div><div class="stat-sub">recorded dates</div></div>`;
+
+  // ── Line chart ──
+  const chartEl=$id('nwChart');
+  chartEl.innerHTML='';
+  if(dates.length<2){ chartEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Add at least 2 balance entries to see the chart</div>'; $id('nwLegend').innerHTML=''; return; }
+
+  // Build series: total + each account
+  const COLORS=['var(--gold)','var(--blue)','var(--green)','var(--red)','#a78bfa','#f97316','#06b6d4'];
+  const totalSeries=dates.map(d=>totalNetWorthAt(d));
+  const accountSeries=accounts.map((a,i)=>({
+    name:a.name||'Account',
+    color:COLORS[(i+1)%COLORS.length],
+    values:dates.map(d=>{
+      const entries=(a.history||[]).filter(e=>e.date<=d).sort((x,y)=>y.date.localeCompare(x.date));
+      return entries.length?entries[0].balance:(a.balance||0);
+    })
+  }));
+
+  const allVals=[...totalSeries,...accountSeries.flatMap(s=>s.values)];
+  const minVal=Math.min(...allVals);
+  const maxVal=Math.max(...allVals);
+  const range=maxVal-minVal||1;
+  const H=140, W_PAD=44;
+
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('width','100%'); svg.setAttribute('height',H+30);
+  svg.style.overflow='visible';
+
+  const drawLine=(values, color, width=2)=>{
+    const pts=values.map((v,i)=>{
+      const x=W_PAD+(i/(dates.length-1))*(100-W_PAD/5)+'%';
+      const y=H-((v-minVal)/range*(H-20)+10);
+      return {x,y,v};
+    });
+    // Draw dots + line using SVG polyline
+    const lineEl=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    lineEl.setAttribute('points',pts.map(p=>`${p.x},${p.y}`).join(' '));
+    lineEl.setAttribute('fill','none');
+    lineEl.setAttribute('stroke',color);
+    lineEl.setAttribute('stroke-width',width);
+    lineEl.setAttribute('stroke-linejoin','round');
+    svg.appendChild(lineEl);
+    pts.forEach(p=>{
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); c.setAttribute('r',3);
+      c.setAttribute('fill',color);
+      svg.appendChild(c);
+    });
+  };
+
+  // Draw account lines first (thinner), then total on top
+  accountSeries.forEach(s=>drawLine(s.values,s.color,1.5));
+  drawLine(totalSeries,'var(--gold)',2.5);
+
+  // X-axis date labels
+  dates.forEach((d,i)=>{
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    const x=W_PAD+(i/(dates.length-1))*(100-W_PAD/5)+'%';
+    lbl.setAttribute('x',x); lbl.setAttribute('y',H+20);
+    lbl.setAttribute('text-anchor','middle');
+    lbl.setAttribute('font-size','9');
+    lbl.setAttribute('fill','var(--muted)');
+    lbl.setAttribute('font-family','DM Mono, monospace');
+    lbl.textContent=new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    svg.appendChild(lbl);
+  });
+
+  // Y-axis min/max labels
+  [[minVal,H-10],[maxVal,10]].forEach(([v,y])=>{
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x',0); lbl.setAttribute('y',y);
+    lbl.setAttribute('font-size','9'); lbl.setAttribute('fill','var(--muted)');
+    lbl.setAttribute('font-family','DM Mono, monospace');
+    lbl.textContent='£'+Math.round(v/1000)+'k';
+    svg.appendChild(lbl);
+  });
+
+  chartEl.appendChild(svg);
+
+  // Legend
+  const legEl=$id('nwLegend'); legEl.innerHTML='';
+  [{name:'Total Net Worth',color:'var(--gold)'},...accountSeries].forEach(s=>{
+    legEl.innerHTML+=`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div>${esc(s.name)}</div>`;
+  });
+
+  // ── Per-account tables ──
+  const tablesEl=$id('nwAccountTables'); tablesEl.innerHTML='';
+  accounts.forEach(a=>{
+    const sorted=[...(a.history||[])].sort((x,y)=>y.date.localeCompare(x.date));
+    const wrap=document.createElement('div');
+    wrap.style.cssText='margin-bottom:20px;';
+    wrap.innerHTML=`<div class="sec">${esc(a.name||'Unnamed')}</div>
+    <div class="panel" style="padding:16px 20px;">
+      ${sorted.length?`<table class="year-table" style="width:100%;">
+        <thead><tr><th>Date</th><th style="text-align:right;">Balance</th><th style="text-align:right;">Change</th><th></th></tr></thead>
+        <tbody>${sorted.map((e,i)=>{
+          const prev=sorted[i+1];
+          const change=prev?e.balance-prev.balance:null;
+          return `<tr>
+            <td style="font-family:'DM Mono',monospace;font-size:12px;">${new Date(e.date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;">${fmt(e.balance)}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;" class="${change===null?'':change>=0?'saved-pos':'saved-neg'}">${change===null?'—':fmtSign(change)}</td>
+            <td style="text-align:right;"><button onclick="openEditSnapshot('${a.id}','${e.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`:'<div style="font-size:12px;color:var(--muted);">No entries yet — tap + Record Balance to add one.</div>'}
+      <button onclick="openAddSnapshotForAccount('${a.id}')" style="width:100%;margin-top:12px;padding:9px;background:transparent;border:1px dashed var(--border);border-radius:7px;color:var(--muted);cursor:pointer;font-size:13px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Add Entry</button>
+    </div>`;
+    tablesEl.appendChild(wrap);
+  });
+  if(!accounts.length){
+    tablesEl.innerHTML='<div class="rec-empty">No accounts yet — add them in ⚙ Settings first.</div>';
+  }
 }
 
 // ── HELPERS ──────────────────────────────────────
@@ -1817,11 +2108,14 @@ function getEffectiveEntries(k, type){
 // VIEW SWITCHING
 // ═══════════════════════════════════════════════
 function showView(view){
-  $id('viewDashboard').style.display = view==='dashboard' ? '' : 'none';
-  $id('viewRecurring').style.display = view==='recurring' ? '' : 'none';
+  $id('viewDashboard').style.display  = view==='dashboard' ? '' : 'none';
+  $id('viewRecurring').style.display  = view==='recurring' ? '' : 'none';
+  $id('viewNetWorth').style.display   = view==='networth'  ? '' : 'none';
   $id('navDashboard').classList.toggle('on', view==='dashboard');
   $id('navRecurring').classList.toggle('on', view==='recurring');
+  $id('navNetWorth').classList.toggle('on',  view==='networth');
   if(view==='recurring') renderTimeline();
+  if(view==='networth')  renderNetWorth();
 }
 
 // ═══════════════════════════════════════════════
