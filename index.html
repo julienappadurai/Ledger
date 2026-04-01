@@ -63,13 +63,26 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .hbtn.saving{color:var(--gold);border-color:rgba(201,168,76,.3);}
 .hbtn.restoring{color:var(--blue);border-color:rgba(92,158,224,.4);}
 
-/* ── TOOLS SUBMENU ── */
-.tools-submenu{display:none;width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:12px 16px;margin-bottom:20px;animation:su .15s ease;}
-.tools-submenu.on{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
-.tools-submenu-label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-right:4px;}
-.tool-btn{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
-.tool-btn:hover{border-color:var(--gold);color:var(--gold);}
-.tool-btn.on{background:var(--gold);color:var(--bg);border-color:var(--gold);}
+/* ── MODE DROPDOWN ── */
+.mode-dropdown-wrap{position:relative;display:inline-block;}
+.mode-dropdown-btn{background:none;border:none;cursor:pointer;padding:0;display:flex;flex-direction:column;align-items:flex-start;gap:0;}
+.mode-dropdown-btn .logo-title{font-family:'Playfair Display',serif;font-size:26px;color:var(--gold);line-height:1;}
+.mode-dropdown-btn .logo-sub{color:var(--muted);font-size:10px;display:flex;align-items:center;gap:4px;font-family:'DM Mono',monospace;letter-spacing:2px;margin-top:3px;}
+.mode-dropdown-btn .logo-sub .dd-arrow{font-size:8px;transition:transform .2s;}
+.mode-dropdown-btn.open .logo-sub .dd-arrow{transform:rotate(180deg);}
+.mode-dropdown-menu{display:none;position:absolute;top:calc(100% + 8px);left:0;background:var(--s1);border:1px solid var(--border);border-radius:10px;min-width:200px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3);overflow:hidden;animation:su .15s ease;}
+.mode-dropdown-menu.on{display:block;}
+.mode-option{display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border);}
+.mode-option:last-child{border-bottom:none;}
+.mode-option:hover{background:var(--s2);}
+.mode-option.active{background:rgba(201,168,76,.08);}
+.mode-option-icon{font-size:16px;width:22px;text-align:center;flex-shrink:0;}
+.mode-option-text{flex:1;}
+.mode-option-name{font-size:13px;font-weight:500;color:var(--text);}
+.mode-option-desc{font-size:11px;color:var(--muted);margin-top:1px;font-family:'DM Mono',monospace;}
+.mode-option.active .mode-option-name{color:var(--gold);}
+.mode-option-check{color:var(--gold);font-size:12px;opacity:0;}
+.mode-option.active .mode-option-check{opacity:1;}
 
 /* ── SUBSCRIPTION TRACKER ── */
 .sub-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
@@ -273,12 +286,34 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 <div class="app">
 
   <header>
-    <div class="logo">Ledger <small>MONTHLY SAVINGS</small></div>
+    <div class="mode-dropdown-wrap">
+      <button class="mode-dropdown-btn" id="modeDropBtn" onclick="toggleModeDropdown()">
+        <span class="logo-title">Ledger</span>
+        <span class="logo-sub" id="modeSubLabel">MONTHLY SAVINGS <span class="dd-arrow">▼</span></span>
+      </button>
+      <div class="mode-dropdown-menu" id="modeDropMenu">
+        <div class="mode-option active" id="modeOptSavings" onclick="selectMode('savings')">
+          <span class="mode-option-icon">📊</span>
+          <div class="mode-option-text">
+            <div class="mode-option-name">Monthly Savings</div>
+            <div class="mode-option-desc">Income, spending & net worth</div>
+          </div>
+          <span class="mode-option-check">✓</span>
+        </div>
+        <div class="mode-option" id="modeOptSubscriptions" onclick="selectMode('subscriptions')">
+          <span class="mode-option-icon">⊙</span>
+          <div class="mode-option-text">
+            <div class="mode-option-name">Subscription Tracker</div>
+            <div class="mode-option-desc">Manage recurring subscriptions</div>
+          </div>
+          <span class="mode-option-check">✓</span>
+        </div>
+      </div>
+    </div>
     <div class="hbtns">
       <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
       <button class="hbtn nav-btn" id="navNetWorth" onclick="showView('networth')">◈ Net Worth</button>
-      <button class="hbtn nav-btn" id="navTools" onclick="toggleToolsMenu()">⊞ Tools ▾</button>
       <button class="hbtn" onclick="openXlsxImport()">⬆ Import Excel</button>
       <button class="hbtn" onclick="exportToExcel()">⬇ Export Data</button>
       <button class="hbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀</button>
@@ -288,16 +323,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     </div>
   </header>
 
-  <!-- TOOLS SUBMENU -->
-  <div class="tools-submenu" id="toolsSubmenu">
-    <span class="tools-submenu-label">Tools</span>
-    <button class="tool-btn" id="toolBtnSubscriptions" onclick="showTool('subscriptions')">⊙ Subscriptions</button>
-  </div>
-
   <!-- SUBSCRIPTION TRACKER VIEW -->
   <div id="viewSubscriptions" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
-      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">Subscription Tracker</div>
       <button class="hbtn" onclick="openAddSubscription()" style="color:var(--gold);border-color:rgba(201,168,76,.3);">+ Add Subscription</button>
     </div>
     <div class="sub-summary" id="subSummary"></div>
@@ -2227,37 +2255,55 @@ function getEffectiveEntries(k, type){
 // VIEW SWITCHING
 // ═══════════════════════════════════════════════
 function showView(view){
+  const savingsViews=['dashboard','recurring','networth'];
+  const isSavings=savingsViews.includes(view);
   $id('viewDashboard').style.display     = view==='dashboard'     ? '' : 'none';
   $id('viewRecurring').style.display     = view==='recurring'     ? '' : 'none';
   $id('viewNetWorth').style.display      = view==='networth'      ? '' : 'none';
   $id('viewSubscriptions').style.display = view==='subscriptions' ? '' : 'none';
+  // Show/hide savings nav buttons based on mode
+  ['navDashboard','navRecurring','navNetWorth'].forEach(id=>{
+    $id(id).style.display = isSavings ? '' : 'none';
+  });
   $id('navDashboard').classList.toggle('on', view==='dashboard');
   $id('navRecurring').classList.toggle('on', view==='recurring');
   $id('navNetWorth').classList.toggle('on',  view==='networth');
-  // Close tools menu when switching to non-tool views
-  if(['dashboard','recurring','networth'].includes(view)){
-    $id('toolsSubmenu').classList.remove('on');
-    $id('navTools').classList.remove('on');
-  }
   if(view==='recurring')     renderTimeline();
   if(view==='networth')      renderNetWorth();
   if(view==='subscriptions') renderSubscriptions();
 }
 
-function toggleToolsMenu(){
-  const menu = $id('toolsSubmenu');
-  const btn  = $id('navTools');
-  const isOpen = menu.classList.toggle('on');
-  btn.classList.toggle('on', isOpen);
-  btn.textContent = isOpen ? '⊞ Tools ▲' : '⊞ Tools ▾';
+// ── MODE DROPDOWN ──
+let modeDropOpen=false;
+
+function toggleModeDropdown(){
+  modeDropOpen=!modeDropOpen;
+  $id('modeDropMenu').classList.toggle('on',modeDropOpen);
+  $id('modeDropBtn').classList.toggle('open',modeDropOpen);
 }
 
-function showTool(tool){
-  // Highlight active tool button
-  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('on'));
-  $id('toolBtn'+tool.charAt(0).toUpperCase()+tool.slice(1)).classList.add('on');
-  showView(tool);
+function closeModeDropdown(){
+  modeDropOpen=false;
+  $id('modeDropMenu').classList.remove('on');
+  $id('modeDropBtn').classList.remove('open');
 }
+
+function selectMode(mode){
+  closeModeDropdown();
+  $id('modeOptSavings').classList.toggle('active',mode==='savings');
+  $id('modeOptSubscriptions').classList.toggle('active',mode==='subscriptions');
+  $id('modeSubLabel').innerHTML=mode==='savings'
+    ?'MONTHLY SAVINGS <span class="dd-arrow">▼</span>'
+    :'SUBSCRIPTIONS <span class="dd-arrow">▼</span>';
+  if(mode==='savings')       showView('dashboard');
+  if(mode==='subscriptions') showView('subscriptions');
+}
+
+document.addEventListener('click',e=>{
+  if(modeDropOpen&&!$id('modeDropBtn').contains(e.target)&&!$id('modeDropMenu').contains(e.target)){
+    closeModeDropdown();
+  }
+});
 
 // ═══════════════════════════════════════════════
 // TIMELINE VIEW
