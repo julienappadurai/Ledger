@@ -63,6 +63,39 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .hbtn.saving{color:var(--gold);border-color:rgba(201,168,76,.3);}
 .hbtn.restoring{color:var(--blue);border-color:rgba(92,158,224,.4);}
 
+/* ── TOOLS SUBMENU ── */
+.tools-submenu{display:none;width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:12px 16px;margin-bottom:20px;animation:su .15s ease;}
+.tools-submenu.on{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.tools-submenu-label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-right:4px;}
+.tool-btn{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.tool-btn:hover{border-color:var(--gold);color:var(--gold);}
+.tool-btn.on{background:var(--gold);color:var(--bg);border-color:var(--gold);}
+
+/* ── SUBSCRIPTION TRACKER ── */
+.sub-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+@media(max-width:500px){.sub-summary{grid-template-columns:1fr 1fr;}}
+.sub-group{margin-bottom:24px;}
+.sub-group-title{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;}
+.sub-group-cost{font-family:'DM Mono',monospace;font-size:11px;color:var(--gold);}
+.sub-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:opacity .15s;}
+.sub-row:hover{opacity:.8;}
+.sub-row:last-child{border-bottom:none;}
+.sub-icon{font-size:18px;width:28px;text-align:center;flex-shrink:0;}
+.sub-info{flex:1;min-width:0;}
+.sub-name{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sub-meta{font-size:11px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;}
+.sub-right{text-align:right;flex-shrink:0;}
+.sub-cost{font-family:'DM Mono',monospace;font-size:13px;color:var(--text);}
+.sub-renewal{font-size:10px;font-family:'DM Mono',monospace;margin-top:3px;}
+.sub-renewal.soon{color:var(--gold);}
+.sub-renewal.overdue{color:var(--red);}
+.sub-renewal.ok{color:var(--muted);}
+.sub-status{display:inline-block;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:2px 6px;border-radius:4px;text-transform:uppercase;}
+.sub-status.active{background:rgba(76,175,125,.15);color:var(--green);}
+.sub-status.paused{background:rgba(201,168,76,.12);color:var(--gold);}
+.sub-status.cancelled{background:rgba(224,92,92,.12);color:var(--red);}
+.sub-empty{text-align:center;padding:32px;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);}
+
 /* ── MONTH STRIP ── */
 .month-strip{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:28px;}
 .mbtn{font-family:'DM Mono',monospace;font-size:11px;padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;}
@@ -245,6 +278,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
       <button class="hbtn nav-btn" id="navNetWorth" onclick="showView('networth')">◈ Net Worth</button>
+      <button class="hbtn nav-btn" id="navTools" onclick="toggleToolsMenu()">⊞ Tools ▾</button>
       <button class="hbtn" onclick="openXlsxImport()">⬆ Import Excel</button>
       <button class="hbtn" onclick="exportToExcel()">⬇ Export Data</button>
       <button class="hbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀</button>
@@ -253,6 +287,22 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button class="hbtn" onclick="signOut()">⏻ Sign out</button>
     </div>
   </header>
+
+  <!-- TOOLS SUBMENU -->
+  <div class="tools-submenu" id="toolsSubmenu">
+    <span class="tools-submenu-label">Tools</span>
+    <button class="tool-btn" id="toolBtnSubscriptions" onclick="showTool('subscriptions')">⊙ Subscriptions</button>
+  </div>
+
+  <!-- SUBSCRIPTION TRACKER VIEW -->
+  <div id="viewSubscriptions" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">Subscription Tracker</div>
+      <button class="hbtn" onclick="openAddSubscription()" style="color:var(--gold);border-color:rgba(201,168,76,.3);">+ Add Subscription</button>
+    </div>
+    <div class="sub-summary" id="subSummary"></div>
+    <div id="subList"></div>
+  </div>
 
   <!-- DASHBOARD VIEW -->
   <div id="viewDashboard">
@@ -375,6 +425,57 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   </div>
 
 </div>
+</div>
+
+<!-- SUBSCRIPTION MODAL -->
+<div class="ov" id="subOv">
+  <div class="modal" style="max-width:460px;max-height:85vh;overflow-y:auto;">
+    <h2 id="subModalTitle">Add Subscription</h2>
+    <div class="field"><label>Name / Service</label><input id="subName" placeholder="e.g. Netflix, Spotify…"></div>
+    <div class="field"><label>Category</label>
+      <select id="subCat">
+        <option value="🎬 Streaming">🎬 Streaming</option>
+        <option value="🎵 Music">🎵 Music</option>
+        <option value="📺 TV & Cable">📺 TV & Cable</option>
+        <option value="💻 Software">💻 Software</option>
+        <option value="🎮 Gaming">🎮 Gaming</option>
+        <option value="🏋️ Fitness">🏋️ Fitness</option>
+        <option value="📰 News & Media">📰 News & Media</option>
+        <option value="🏠 Home & Security">🏠 Home & Security</option>
+        <option value="☁️ Cloud Storage">☁️ Cloud Storage</option>
+        <option value="🛡️ Insurance">🛡️ Insurance</option>
+        <option value="💡 Utilities">💡 Utilities</option>
+        <option value="🔮 Other">🔮 Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Household</label><input id="subHousehold" placeholder="e.g. My House, Mum's House…" list="householdSuggestions"><datalist id="householdSuggestions"></datalist></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="field"><label>Cost (£)</label><input type="number" id="subCost" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label>Billing Cycle</label>
+        <select id="subCycle">
+          <option value="weekly">Weekly</option>
+          <option value="monthly" selected>Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="biannually">Every 6 months</option>
+          <option value="annually">Annually</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Next Renewal Date</label><input type="date" id="subRenewal"></div>
+    <div class="field"><label>Status</label>
+      <select id="subStatus">
+        <option value="active">Active</option>
+        <option value="paused">Paused</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+    </div>
+    <div class="field"><label>Notes</label><input id="subNotes" placeholder="Optional notes…"></div>
+    <div class="mbtns">
+      <button class="mbtn-g" onclick="closeSubModal()">Cancel</button>
+      <button class="mbtn-d" id="subDelBtn" style="display:none;" onclick="deleteSubscription()">Delete</button>
+      <button class="mbtn-p" onclick="saveSubscription()">Save</button>
+    </div>
+  </div>
 </div>
 
 <!-- ADD SNAPSHOT MODAL -->
@@ -657,7 +758,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 // ═══════════════════════════════════════════════
 // months: { "2025-01": { income: [{id,src,amt}], spending: [{id,cat,amt}] } }
 // settings: { name, goal, accounts: [{id,name,balance}] }
-let D = { months:{}, settings:{ name:'', goal:2000, accounts:[] } };
+let D = { months:{}, settings:{ name:'', goal:2000, accounts:[] }, templates:[], deleted:[], subscriptions:[] };
 let editingIncome=null, editingCat=null;
 
 const NOW  = new Date();
@@ -828,7 +929,7 @@ function enterApp(){
   // Load cached data first so app feels instant
   const cached=localStorage.getItem(DATA_KEY);
   if(cached){
-    try{ const loaded=JSON.parse(cached); D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[]},loaded); }
+    try{ const loaded=JSON.parse(cached); D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[],subscriptions:[]},loaded); }
     catch(e){ console.warn('Cache parse error'); }
   }
   showApp();
@@ -901,7 +1002,7 @@ async function syncWithDrive(){
       const res=await gapi.client.drive.files.get({fileId,alt:'media'});
       try{
         const driveData=JSON.parse(res.body);
-        D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[]},driveData);
+        D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[],subscriptions:[]},driveData);
         localStorage.setItem(DATA_KEY, JSON.stringify(D));
         render(); // Re-render with Drive data
       } catch(e){ console.warn('Drive parse error'); }
@@ -2126,14 +2227,36 @@ function getEffectiveEntries(k, type){
 // VIEW SWITCHING
 // ═══════════════════════════════════════════════
 function showView(view){
-  $id('viewDashboard').style.display  = view==='dashboard' ? '' : 'none';
-  $id('viewRecurring').style.display  = view==='recurring' ? '' : 'none';
-  $id('viewNetWorth').style.display   = view==='networth'  ? '' : 'none';
+  $id('viewDashboard').style.display     = view==='dashboard'     ? '' : 'none';
+  $id('viewRecurring').style.display     = view==='recurring'     ? '' : 'none';
+  $id('viewNetWorth').style.display      = view==='networth'      ? '' : 'none';
+  $id('viewSubscriptions').style.display = view==='subscriptions' ? '' : 'none';
   $id('navDashboard').classList.toggle('on', view==='dashboard');
   $id('navRecurring').classList.toggle('on', view==='recurring');
   $id('navNetWorth').classList.toggle('on',  view==='networth');
-  if(view==='recurring') renderTimeline();
-  if(view==='networth')  renderNetWorth();
+  // Close tools menu when switching to non-tool views
+  if(['dashboard','recurring','networth'].includes(view)){
+    $id('toolsSubmenu').classList.remove('on');
+    $id('navTools').classList.remove('on');
+  }
+  if(view==='recurring')     renderTimeline();
+  if(view==='networth')      renderNetWorth();
+  if(view==='subscriptions') renderSubscriptions();
+}
+
+function toggleToolsMenu(){
+  const menu = $id('toolsSubmenu');
+  const btn  = $id('navTools');
+  const isOpen = menu.classList.toggle('on');
+  btn.classList.toggle('on', isOpen);
+  btn.textContent = isOpen ? '⊞ Tools ▲' : '⊞ Tools ▾';
+}
+
+function showTool(tool){
+  // Highlight active tool button
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('on'));
+  $id('toolBtn'+tool.charAt(0).toUpperCase()+tool.slice(1)).classList.add('on');
+  showView(tool);
 }
 
 // ═══════════════════════════════════════════════
@@ -2817,6 +2940,202 @@ function exportToExcel(){
   document.body.appendChild(a);
   a.click();
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ═══════════════════════════════════════════════
+// SUBSCRIPTION TRACKER
+// ═══════════════════════════════════════════════
+let editingSubId = null;
+
+const SUB_CYCLES = {
+  weekly:0.25, monthly:1, quarterly:3, biannually:6, annually:12
+};
+const SUB_CYCLE_LABELS = {
+  weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly',
+  biannually:'Every 6 months', annually:'Annually'
+};
+const SUB_CAT_ICONS = {
+  '🎬 Streaming':'🎬','🎵 Music':'🎵','📺 TV & Cable':'📺',
+  '💻 Software':'💻','🎮 Gaming':'🎮','🏋️ Fitness':'🏋️',
+  '📰 News & Media':'📰','🏠 Home & Security':'🏠',
+  '☁️ Cloud Storage':'☁️','🛡️ Insurance':'🛡️',
+  '💡 Utilities':'💡','🔮 Other':'🔮'
+};
+
+function subMonthly(cost, cycle){
+  return cost / (SUB_CYCLES[cycle]||1);
+}
+
+function daysUntilRenewal(dateStr){
+  if(!dateStr) return null;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const renewal=new Date(dateStr+'T00:00:00');
+  return Math.round((renewal-today)/(1000*60*60*24));
+}
+
+function getSubscriptions(){ return D.subscriptions||[]; }
+
+function getHouseholds(){
+  const hs=new Set(getSubscriptions().map(s=>s.household||'').filter(Boolean));
+  return [...hs].sort();
+}
+
+function renderSubscriptions(){
+  const subs = getSubscriptions();
+  const summaryEl = $id('subSummary');
+  const listEl = $id('subList');
+
+  // ── Summary cards ──
+  const active = subs.filter(s=>s.status==='active');
+  const monthly = active.reduce((sum,s)=>sum+subMonthly(s.cost,s.cycle),0);
+  const annual  = monthly*12;
+  const soonCount = active.filter(s=>{ const d=daysUntilRenewal(s.renewalDate); return d!==null&&d<=7&&d>=0; }).length;
+  summaryEl.innerHTML=`
+    <div class="stat-card highlight">
+      <div class="stat-label">Monthly Cost</div>
+      <div class="stat-val" style="font-size:22px;">${fmt(monthly)}</div>
+      <div class="stat-sub">${active.length} active subscription${active.length!==1?'s':''}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Annual Cost</div>
+      <div class="stat-val r" style="font-size:22px;">${fmt(annual)}</div>
+      <div class="stat-sub">per year</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Renewals Soon</div>
+      <div class="stat-val ${soonCount>0?'':'b'}" style="font-size:22px;color:${soonCount>0?'var(--gold)':'var(--muted)'};">${soonCount}</div>
+      <div class="stat-sub">within 7 days</div>
+    </div>`;
+
+  if(!subs.length){
+    listEl.innerHTML='<div class="sub-empty">No subscriptions yet.<br>Tap + Add Subscription to get started.</div>';
+    return;
+  }
+
+  // ── Group by household, sort by renewal ──
+  const groups={};
+  subs.forEach(s=>{
+    const h=s.household||'Unassigned';
+    if(!groups[h]) groups[h]=[];
+    groups[h].push(s);
+  });
+  Object.values(groups).forEach(g=>g.sort((a,b)=>(a.renewalDate||'').localeCompare(b.renewalDate||'')));
+
+  listEl.innerHTML='';
+  Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([household,items])=>{
+    const groupMonthly=items.filter(s=>s.status==='active').reduce((sum,s)=>sum+subMonthly(s.cost,s.cycle),0);
+    const wrap=document.createElement('div');
+    wrap.className='sub-group';
+    wrap.innerHTML=`<div class="sub-group-title">
+      <span>${esc(household)}</span>
+      <span class="sub-group-cost">${fmt(groupMonthly)}/mo</span>
+    </div>`;
+    items.forEach(s=>{
+      const days=daysUntilRenewal(s.renewalDate);
+      const renewalCls=days===null?'ok':days<0?'overdue':days<=7?'soon':'ok';
+      const renewalLbl=days===null?'—':days<0?'Overdue':days===0?'Today':days===1?'Tomorrow':`${days} days`;
+      const icon=SUB_CAT_ICONS[s.cat]||'🔮';
+      const row=document.createElement('div');
+      row.className='sub-row';
+      row.style.opacity=s.status==='cancelled'?'0.45':'1';
+      row.innerHTML=`
+        <div class="sub-icon">${icon}</div>
+        <div class="sub-info">
+          <div class="sub-name">${esc(s.name)}</div>
+          <div class="sub-meta">
+            <span class="sub-status ${s.status}">${s.status}</span>
+            <span style="margin-left:6px;">${esc(SUB_CYCLE_LABELS[s.cycle]||s.cycle)}</span>
+            ${s.notes?`<span style="margin-left:6px;opacity:.7;">· ${esc(s.notes)}</span>`:''}
+          </div>
+        </div>
+        <div class="sub-right">
+          <div class="sub-cost">${fmt(s.cost)}</div>
+          <div class="sub-renewal ${renewalCls}">${renewalLbl}</div>
+        </div>`;
+      row.onclick=()=>openEditSubscription(s.id);
+      wrap.appendChild(row);
+    });
+    listEl.appendChild(wrap);
+  });
+}
+
+// ── SUBSCRIPTION MODAL ──
+function openAddSubscription(){
+  editingSubId=null;
+  $id('subModalTitle').textContent='Add Subscription';
+  $id('subDelBtn').style.display='none';
+  $id('subName').value='';
+  $id('subCat').value='🎬 Streaming';
+  $id('subHousehold').value='';
+  $id('subCost').value='';
+  $id('subCycle').value='monthly';
+  $id('subRenewal').value=new Date().toISOString().slice(0,10);
+  $id('subStatus').value='active';
+  $id('subNotes').value='';
+  // Populate household datalist
+  populateHouseholdList();
+  $id('subOv').classList.add('on');
+  setTimeout(()=>$id('subName').focus(),100);
+}
+
+function openEditSubscription(id){
+  const s=(D.subscriptions||[]).find(x=>x.id===id);
+  if(!s) return;
+  editingSubId=id;
+  $id('subModalTitle').textContent='Edit Subscription';
+  $id('subDelBtn').style.display='';
+  $id('subName').value=s.name||'';
+  $id('subCat').value=s.cat||'🔮 Other';
+  $id('subHousehold').value=s.household||'';
+  $id('subCost').value=s.cost||'';
+  $id('subCycle').value=s.cycle||'monthly';
+  $id('subRenewal').value=s.renewalDate||'';
+  $id('subStatus').value=s.status||'active';
+  $id('subNotes').value=s.notes||'';
+  populateHouseholdList();
+  $id('subOv').classList.add('on');
+}
+
+function populateHouseholdList(){
+  const dl=$id('householdSuggestions'); dl.innerHTML='';
+  getHouseholds().forEach(h=>{
+    const opt=document.createElement('option'); opt.value=h; dl.appendChild(opt);
+  });
+}
+
+function closeSubModal(){ $id('subOv').classList.remove('on'); }
+$id('subOv').addEventListener('click',e=>{ if(e.target===$id('subOv')) closeSubModal(); });
+
+function saveSubscription(){
+  const name=$id('subName').value.trim();
+  const cost=parseFloat($id('subCost').value);
+  if(!name||isNaN(cost)||cost<0){ alert('Please enter a name and valid cost.'); return; }
+  if(!D.subscriptions) D.subscriptions=[];
+  const entry={
+    id: editingSubId||Date.now().toString(),
+    name,
+    cat:$id('subCat').value,
+    household:$id('subHousehold').value.trim(),
+    cost,
+    cycle:$id('subCycle').value,
+    renewalDate:$id('subRenewal').value,
+    status:$id('subStatus').value,
+    notes:$id('subNotes').value.trim()
+  };
+  if(editingSubId){
+    const idx=D.subscriptions.findIndex(x=>x.id===editingSubId);
+    if(idx>=0) D.subscriptions[idx]=entry;
+  } else {
+    D.subscriptions.push(entry);
+  }
+  save(); closeSubModal(); renderSubscriptions();
+}
+
+function deleteSubscription(){
+  if(!editingSubId) return;
+  if(!confirm('Delete this subscription?')) return;
+  D.subscriptions=(D.subscriptions||[]).filter(x=>x.id!==editingSubId);
+  save(); closeSubModal(); renderSubscriptions();
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
