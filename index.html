@@ -236,13 +236,20 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 
   <!-- DASHBOARD VIEW -->
   <div id="viewDashboard">
-  <!-- Month strip -->
+  <!-- View mode toggle + Month strip -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+    <div style="display:flex;gap:3px;background:var(--s2);border-radius:7px;padding:3px;flex-shrink:0;">
+      <button class="hbtn nav-btn on" id="modeCalBtn" onclick="setViewMode('calendar')" style="padding:5px 12px;font-size:10px;">📅 Calendar months</button>
+      <button class="hbtn nav-btn" id="modePayBtn" onclick="setViewMode('payperiod')" style="padding:5px 12px;font-size:10px;">💰 Pay periods</button>
+    </div>
+    <div id="payPeriodNote" style="display:none;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;"></div>
+  </div>
   <div class="month-strip" id="monthStrip"></div>
 
   <!-- Top stats -->
   <div class="stats-grid">
     <div class="stat-card highlight">
-      <div class="stat-label">Saved This Month</div>
+      <div class="stat-label" id="sSavedLabel">Saved This Month</div>
       <div class="stat-val" id="sSaved">£0</div>
       <div class="stat-sub" id="sSavedSub">—</div>
     </div>
@@ -857,6 +864,133 @@ window.addEventListener('load', ()=>{
   showPinScreen();
 });
 
+
+// ═══════════════════════════════════════════════
+// PAY PERIOD VIEW MODE
+// ═══════════════════════════════════════════════
+let viewMode = 'calendar'; // 'calendar' | 'payperiod'
+// activePeriod: for payperiod mode, an object {start:'YYYY-MM-DD', end:'YYYY-MM-DD', label:'25 Jan – 24 Feb'}
+// for calendar mode, activePeriod is null (use activeMonth instead)
+let activePeriod = null;
+
+function setViewMode(mode){
+  viewMode = mode;
+  $id('modeCalBtn').classList.toggle('on', mode==='calendar');
+  $id('modePayBtn').classList.toggle('on', mode==='payperiod');
+  $id('payPeriodNote').style.display = mode==='payperiod' ? '' : 'none';
+  if(mode==='payperiod'){
+    const periods = getPayPeriods();
+    if(!periods.length){
+      $id('payPeriodNote').textContent = 'No Salary transactions found — add income named "Salary" to use pay periods';
+      $id('payPeriodNote').style.color = 'var(--red)';
+    } else {
+      $id('payPeriodNote').textContent = `Based on ${periods.length} Salary payment${periods.length>1?'s':''} found`;
+      $id('payPeriodNote').style.color = 'var(--muted)';
+      // Default to most recent period
+      activePeriod = periods[periods.length-1];
+    }
+  }
+  render();
+}
+
+// Find all Salary income dates (from direct entries and recurring templates)
+function getSalaryDates(){
+  const dates = [];
+  // Scan all months for direct salary entries
+  Object.entries(D.months||{}).forEach(([month, data])=>{
+    (data.income||[]).forEach(e=>{
+      if(isSalary(e.src||'') && e.date){
+        dates.push(e.date);
+      }
+    });
+  });
+  // Also include generated entries from recurring templates for the next 12 months
+  (D.templates||[]).filter(t=>t.type==='income'&&isSalary(t.src||'')).forEach(t=>{
+    // Generate dates for 24 months from startMonth
+    const [sy,sm]=t.startMonth.split('-').map(Number);
+    for(let i=0;i<=24;i++){
+      const d=new Date(sy,sm-1+i,1);
+      const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      // Only if not overridden/skipped
+      const isSkipped=(D.deleted||[]).some(x=>x.templateId===t.id&&x.month===k);
+      if(!isSkipped){
+        const override=findOverride(t.id,k);
+        if(override&&override.date) dates.push(override.date);
+        else {
+          const day=repeatDayForMonth(t,k);
+          dates.push(`${k}-${String(day).padStart(2,'0')}`);
+        }
+      }
+    }
+  });
+  // Deduplicate and sort
+  return [...new Set(dates)].sort();
+}
+
+function isSalary(src){
+  return src.toLowerCase().trim()==='salary';
+}
+
+// Build pay periods: each period runs from one salary date to the day before the next
+function getPayPeriods(){
+  const dates = getSalaryDates();
+  if(dates.length < 1) return [];
+  const periods = [];
+  for(let i=0; i<dates.length; i++){
+    const start = dates[i];
+    let end;
+    if(i < dates.length-1){
+      // Day before next salary
+      const nextDate = new Date(dates[i+1]+'T00:00:00');
+      nextDate.setDate(nextDate.getDate()-1);
+      end = nextDate.toISOString().slice(0,10);
+    } else {
+      // Last period: extend ~1 month
+      const startDate = new Date(start+'T00:00:00');
+      const endDate = new Date(startDate.getFullYear(), startDate.getMonth()+1, startDate.getDate()-1);
+      end = endDate.toISOString().slice(0,10);
+    }
+    const fmtD = d => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
+    periods.push({ start, end, label:`${fmtD(start)} – ${fmtD(end)}` });
+  }
+  return periods;
+}
+
+// Get all transactions that fall within a date range (for pay period view)
+function getEntriesInPeriod(period, type){
+  const {start, end} = period;
+  const startD = new Date(start+'T00:00:00');
+  const endD   = new Date(end+'T23:59:59');
+  const entries = [];
+
+  // Collect every calendar month that overlaps with this period
+  // e.g. period 25 Jan – 24 Feb needs BOTH Jan and Feb months
+  const months = new Set();
+  const sy = parseInt(start.slice(0,4)), sm = parseInt(start.slice(5,7));
+  const ey = parseInt(end.slice(0,4)),   em = parseInt(end.slice(5,7));
+  let y=sy, m=sm;
+  while(y<ey || (y===ey && m<=em)){
+    months.add(`${y}-${String(m).padStart(2,'0')}`);
+    m++; if(m>12){ m=1; y++; }
+  }
+
+  months.forEach(month=>{
+    getEffectiveEntries(month, type).forEach(e=>{
+      if(!e.date) return;
+      const d = new Date(e.date+'T00:00:00');
+      if(d>=startD && d<=endD) entries.push(e);
+    });
+  });
+
+  // Deduplicate by id
+  const seen = new Set();
+  return entries.filter(e=>{ if(seen.has(e.id)) return false; seen.add(e.id); return true; });
+}
+
+function totalIncomeForPeriod(period){ return getEntriesInPeriod(period,'income').reduce((s,e)=>s+e.amt,0); }
+function totalSpendingForPeriod(period){ return getEntriesInPeriod(period,'spending').reduce((s,e)=>s+e.amt,0); }
+function savedForPeriod(period){ return totalIncomeForPeriod(period)-totalSpendingForPeriod(period); }
+
 // ═══════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════
@@ -871,18 +1005,30 @@ function render(){
 
 function buildMonthStrip(){
   const strip=$id('monthStrip'); strip.innerHTML='';
-  // Show 12 months centred on current month
-  for(let i=-6;i<=5;i++){
-    const d=new Date(NOW.getFullYear(),NOW.getMonth()+i,1);
-    const k=key(d);
-    const b=document.createElement('button');
-    b.className='mbtn'+(k===activeMonth?' on':'');
-    b.textContent=label(k);
-    b.onclick=()=>{ activeMonth=k; render(); };
-    strip.appendChild(b);
+  if(viewMode==='payperiod'){
+    const periods=getPayPeriods();
+    if(!periods.length){ strip.innerHTML='<span style="font-size:12px;color:var(--muted);padding:8px;">Add a Salary income entry to see pay periods</span>'; return; }
+    periods.forEach(p=>{
+      const isActive=activePeriod&&p.start===activePeriod.start;
+      const b=document.createElement('button');
+      b.className='mbtn'+(isActive?' on':'');
+      b.textContent=p.label;
+      b.onclick=()=>{ activePeriod=p; render(); };
+      strip.appendChild(b);
+    });
+    setTimeout(()=>{ const on=strip.querySelector('.on'); if(on) on.scrollIntoView({inline:'center',behavior:'smooth'}); },50);
+  } else {
+    for(let i=-6;i<=5;i++){
+      const d=new Date(NOW.getFullYear(),NOW.getMonth()+i,1);
+      const k=key(d);
+      const b=document.createElement('button');
+      b.className='mbtn'+(k===activeMonth?' on':'');
+      b.textContent=label(k);
+      b.onclick=()=>{ activeMonth=k; render(); };
+      strip.appendChild(b);
+    }
+    setTimeout(()=>{ const on=strip.querySelector('.on'); if(on) on.scrollIntoView({inline:'center',behavior:'smooth'}); },50);
   }
-  // Scroll active into view
-  setTimeout(()=>{ const on=strip.querySelector('.on'); if(on) on.scrollIntoView({inline:'center',behavior:'smooth'}); },50);
 }
 
 function getAllMonthKeys(){
@@ -900,16 +1046,24 @@ function getAllMonthKeys(){
 }
 
 function renderStats(){
-  const sv=savedEff(activeMonth);
-  const inc=totalIncomeEff(activeMonth);
-  const rate=inc>0?Math.round(sv/inc*100):0;
+  let sv, inc, rate, periodLabel='This Month';
+  if(viewMode==='payperiod'&&activePeriod){
+    sv=savedForPeriod(activePeriod);
+    inc=totalIncomeForPeriod(activePeriod);
+    rate=inc>0?Math.round(sv/inc*100):0;
+    periodLabel='This Period';
+  } else {
+    sv=savedEff(activeMonth);
+    inc=totalIncomeEff(activeMonth);
+    rate=inc>0?Math.round(sv/inc*100):0;
+  }
   const [y]=activeMonth.split('-');
   const allMonthKeys=getAllMonthKeys();
   const yearSaved=[...allMonthKeys].filter(k=>k.startsWith(y)).reduce((s,k)=>s+savedEff(k),0);
   const monthCount=[...allMonthKeys].filter(k=>k.startsWith(y)&&(totalIncomeEff(k)||totalSpendingEff(k))).length;
   const netWorth=D.settings.accounts.reduce((s,a)=>s+a.balance,0);
 
-  const el=$id('sSaved'); el.textContent=fmt(sv); el.className='stat-val '+(sv>=0?'g':'r');
+  $id('sSavedLabel').textContent='Saved '+periodLabel; const el=$id('sSaved'); el.textContent=fmt(sv); el.className='stat-val '+(sv>=0?'g':'r');
   $id('sSavedSub').textContent=inc>0?`of ${fmt(inc)} income`:'No income entered';
   $id('sRate').textContent=rate+'%';
   $id('sYear').textContent=fmt(yearSaved);
@@ -930,6 +1084,31 @@ function renderStats(){
 
 function renderChart(){
   const chart=$id('chart'); chart.innerHTML='';
+
+  if(viewMode==='payperiod'){
+    const periods=getPayPeriods();
+    if(!periods.length) return;
+    $id('chartYear').textContent='Pay Periods';
+    const items=periods.map(p=>({lbl:new Date(p.start+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}),inc:totalIncomeForPeriod(p),sp:totalSpendingForPeriod(p),sv:savedForPeriod(p),p}));
+    const maxVal=Math.max(...items.map(m=>Math.max(m.inc,m.sp)),1);
+    items.forEach(m=>{
+      const isActive=activePeriod&&m.p.start===activePeriod.start;
+      const g=document.createElement('div'); g.className='bar-g';
+      const barsWrap=document.createElement('div');
+      barsWrap.style.cssText='width:100%;display:flex;gap:1px;align-items:flex-end;flex:1;';
+      const makeBar=(val,color,op)=>{ const b=document.createElement('div');b.className='bar';b.style.flex='1';b.style.height=(Math.max(val,0)/maxVal*100)+'px';b.style.background=color;b.style.opacity=op;return b; };
+      barsWrap.appendChild(makeBar(m.inc,'var(--green)',isActive?'1':'0.45'));
+      barsWrap.appendChild(makeBar(m.sp,'var(--red)',isActive?'1':'0.45'));
+      if(m.sv>0) barsWrap.appendChild(makeBar(m.sv,'var(--gold)',isActive?'1':'0.45'));
+      const lbl=document.createElement('div'); lbl.className='blbl'; lbl.textContent=m.lbl;
+      g.appendChild(barsWrap); g.appendChild(lbl);
+      g.style.cursor='pointer';
+      g.onclick=()=>{ activePeriod=m.p; render(); };
+      chart.appendChild(g);
+    });
+    return;
+  }
+
   const [y]=activeMonth.split('-');
   $id('chartYear').textContent=y;
   const months=[];
@@ -938,27 +1117,15 @@ function renderChart(){
     months.push({k,lbl:new Date(+y,m-1,1).toLocaleString('en-GB',{month:'short'}),inc:totalIncomeEff(k),sp:totalSpendingEff(k),sv:savedEff(k)});
   }
   const maxVal=Math.max(...months.map(m=>Math.max(m.inc,m.sp)),1);
-
   months.forEach(m=>{
     const g=document.createElement('div'); g.className='bar-g';
     const barsWrap=document.createElement('div');
     barsWrap.style.cssText='width:100%;display:flex;gap:1px;align-items:flex-end;flex:1;';
-
-    const makeBar=(val,color,opacity)=>{
-      const b=document.createElement('div'); b.className='bar';
-      b.style.flex='1';
-      b.style.height=(Math.max(val,0)/maxVal*100)+'px';
-      b.style.background=color;
-      b.style.opacity=opacity;
-      return b;
-    };
-
+    const makeBar=(val,color,opacity)=>{ const b=document.createElement('div');b.className='bar';b.style.flex='1';b.style.height=(Math.max(val,0)/maxVal*100)+'px';b.style.background=color;b.style.opacity=opacity;return b; };
     barsWrap.appendChild(makeBar(m.inc,'var(--green)',m.k===activeMonth?'1':'0.45'));
     barsWrap.appendChild(makeBar(m.sp,'var(--red)',m.k===activeMonth?'1':'0.45'));
     if(m.sv>0) barsWrap.appendChild(makeBar(m.sv,'var(--gold)',m.k===activeMonth?'1':'0.45'));
-
     const lbl=document.createElement('div'); lbl.className='blbl'; lbl.textContent=m.lbl;
-
     g.appendChild(barsWrap); g.appendChild(lbl);
     g.style.cursor='pointer';
     g.onclick=()=>{ activeMonth=m.k; render(); };
@@ -969,7 +1136,10 @@ function renderChart(){
 function renderIncomPanel(){
   const rows=$id('incomeRows'); rows.innerHTML='';
   const month=getMonth(activeMonth);
-  getEffectiveEntries(activeMonth,'income').forEach(r=>{
+  const incEntries=viewMode==='payperiod'&&activePeriod
+    ?getEntriesInPeriod(activePeriod,'income')
+    :getEffectiveEntries(activeMonth,'income');
+  incEntries.forEach(r=>{
     const row=document.createElement('div'); row.className='cat-row';
     const incDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''; const incRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
     row.innerHTML=`<div class="cat-icon">💰</div>
@@ -980,13 +1150,16 @@ function renderIncomPanel(){
   if(!month.income.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No income added yet. Tap + to add.</div>';
   }
-  $id('incomeTotal').textContent=fmt(totalIncomeEff(activeMonth));
+  $id('incomeTotal').textContent=fmt(viewMode==='payperiod'&&activePeriod?totalIncomeForPeriod(activePeriod):totalIncomeEff(activeMonth));
 }
 
 function renderSpendPanel(){
   const rows=$id('catRows'); rows.innerHTML='';
   const month=getMonth(activeMonth);
-  getEffectiveEntries(activeMonth,'spending').forEach(r=>{
+  const spEntries=viewMode==='payperiod'&&activePeriod
+    ?getEntriesInPeriod(activePeriod,'spending')
+    :getEffectiveEntries(activeMonth,'spending');
+  spEntries.forEach(r=>{
     const row=document.createElement('div'); row.className='cat-row';
     const icon=r.cat?r.cat.split(' ')[0]:'🔮';
     const name=r.src||(r.cat?r.cat.split(' ').slice(1).join(' '):'');
@@ -999,12 +1172,30 @@ function renderSpendPanel(){
   if(!month.spending.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No spending added yet. Tap + to add.</div>';
   }
-  $id('spendTotal').textContent=fmt(totalSpendingEff(activeMonth));
+  $id('spendTotal').textContent=fmt(viewMode==='payperiod'&&activePeriod?totalSpendingForPeriod(activePeriod):totalSpendingEff(activeMonth));
 }
 
 function renderYearTable(){
-  const [y]=activeMonth.split('-');
   const tbl=$id('yearTable');
+
+  if(viewMode==='payperiod'){
+    const periods=getPayPeriods();
+    if(!periods.length){ tbl.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No Salary dates found</td></tr>'; return; }
+    const rows=periods.map(p=>({lbl:p.label,inc:totalIncomeForPeriod(p),sp:totalSpendingForPeriod(p),sv:savedForPeriod(p),p}));
+    const total=rows.reduce((s,r)=>s+r.sv,0);
+    tbl.innerHTML=`<thead><tr><th>Pay Period</th><th>Income</th><th>Spending</th><th style="text-align:right">Saved</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr class="${activePeriod&&r.p.start===activePeriod.start?'active-row':''}" style="cursor:pointer" onclick="activePeriod=getPayPeriods().find(x=>x.start==='${r.p.start}');render()">
+      <td>${r.lbl}</td>
+      <td style="font-family:'DM Mono',monospace;">${r.inc?fmt(r.inc):'—'}</td>
+      <td style="font-family:'DM Mono',monospace;">${r.sp?fmt(r.sp):'—'}</td>
+      <td class="${r.sv>0?'saved-pos':r.sv<0?'saved-neg':''}" style="font-family:'DM Mono',monospace;">${r.inc||r.sp?fmtSign(r.sv):'—'}</td>
+    </tr>`).join('')+
+    `<tr style="border-top:2px solid var(--border)"><td style="font-weight:500;color:var(--gold)">Total</td><td></td><td></td>
+    <td class="${total>=0?'saved-pos':'saved-neg'}" style="font-family:'DM Mono',monospace;font-weight:500;">${fmtSign(total)}</td></tr></tbody>`;
+    return;
+  }
+
+  const [y]=activeMonth.split('-');
   const months=[];
   for(let m=1;m<=12;m++){
     const k=`${y}-${String(m).padStart(2,'0')}`;
