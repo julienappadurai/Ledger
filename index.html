@@ -337,10 +337,10 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   <!-- View mode toggle + Month strip -->
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
     <div style="display:flex;gap:3px;background:var(--s2);border-radius:7px;padding:3px;flex-shrink:0;">
-      <button class="hbtn nav-btn on" id="modeCalBtn" onclick="setViewMode('calendar')" style="padding:5px 12px;font-size:10px;">📅 Calendar months</button>
-      <button class="hbtn nav-btn" id="modePayBtn" onclick="setViewMode('payperiod')" style="padding:5px 12px;font-size:10px;">💰 Pay periods</button>
+      <button class="hbtn nav-btn" id="modeCalBtn" onclick="setViewMode('calendar')" style="padding:5px 12px;font-size:10px;">📅 Calendar months</button>
+      <button class="hbtn nav-btn on" id="modePayBtn" onclick="setViewMode('payperiod')" style="padding:5px 12px;font-size:10px;">💰 Pay periods</button>
     </div>
-    <div id="payPeriodNote" style="display:none;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;"></div>
+    <div id="payPeriodNote" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;"></div>
   </div>
   <div class="month-strip" id="monthStrip"></div>
 
@@ -1230,7 +1230,7 @@ window.addEventListener('load', ()=>{
 // ═══════════════════════════════════════════════
 // PAY PERIOD VIEW MODE
 // ═══════════════════════════════════════════════
-let viewMode = 'calendar'; // 'calendar' | 'payperiod'
+let viewMode = 'payperiod'; // 'calendar' | 'payperiod'
 // activePeriod: for payperiod mode, an object {start:'YYYY-MM-DD', end:'YYYY-MM-DD', label:'25 Jan – 24 Feb'}
 // for calendar mode, activePeriod is null (use activeMonth instead)
 let activePeriod = null;
