@@ -2884,50 +2884,79 @@ function exportToExcel(){
   const wb = XLSX.utils.book_new();
 
   // ── Income sheet ──
-  const incRows = [['Month (YYYY-MM)','Source / Name','Category','Amount (£)','Date (DD/MM/YYYY)','Repeat','ID']];
-  // One-off income entries from each month
+  const incRows = [['Month (YYYY-MM)','Source / Name','Category','Amount (£)','Date (DD/MM/YYYY)','Repeat','Exclude','ID']];
+  // One-off income entries
   Object.entries(D.months||{}).sort().forEach(([month, data])=>{
     (data.income||[]).filter(e=>!e.templateId&&!e.overrideMonth).forEach(e=>{
       const dateStr = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
-      incRows.push([month, e.src||'', e.cat||'💼 Income', e.amt, dateStr, 'none', e.id]);
+      incRows.push([month, e.src||'', e.cat||'💼 Income', e.amt, dateStr, 'none', e.exclude?'yes':'', e.id]);
     });
   });
   // Recurring income templates
   (D.templates||[]).filter(t=>t.type==='income').forEach(t=>{
     const dateStr = t.startDate ? new Date(t.startDate+'T00:00:00').toLocaleDateString('en-GB') : '';
-    incRows.push([t.startMonth, t.src||'', t.cat||'💼 Income', t.amt, dateStr, repeatLabel(t.repeat)||t.repeat, t.id]);
+    incRows.push([t.startMonth, t.src||'', t.cat||'💼 Income', t.amt, dateStr, repeatLabel(t.repeat)||t.repeat, t.exclude?'yes':'', t.id]);
     // Month overrides
     Object.entries(D.months||{}).sort().forEach(([month, data])=>{
       (data.income||[]).filter(e=>e.templateId===t.id&&e.overrideMonth).forEach(e=>{
         const ovDate = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
-        incRows.push([month, e.src||t.src||'', e.cat||t.cat||'💼 Income', e.amt, ovDate, 'override:'+month, e.id]);
+        incRows.push([month, e.src||t.src||'', e.cat||t.cat||'💼 Income', e.amt, ovDate, 'override:'+month, e.exclude?'yes':'', e.id]);
       });
     });
   });
+  // Skipped months for income templates
+  (D.deleted||[]).forEach(d=>{
+    const tmpl=(D.templates||[]).find(t=>t.id===d.templateId&&t.type==='income');
+    if(tmpl) incRows.push([d.month, tmpl.src||'', tmpl.cat||'💼 Income', '', '', 'skipped:'+d.month, '', d.templateId+'_skip_'+d.month]);
+  });
 
   // ── Spending sheet ──
-  const spRows = [['Month (YYYY-MM)','Name / Description','Category','Amount (£)','Date (DD/MM/YYYY)','Repeat','ID']];
+  const spRows = [['Month (YYYY-MM)','Name / Description','Category','Amount (£)','Date (DD/MM/YYYY)','Repeat','Exclude','ID']];
   Object.entries(D.months||{}).sort().forEach(([month, data])=>{
     (data.spending||[]).filter(e=>!e.templateId&&!e.overrideMonth).forEach(e=>{
       const dateStr = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
-      spRows.push([month, e.src||'', e.cat||'🔮 Other', e.amt, dateStr, 'none', e.id]);
+      spRows.push([month, e.src||'', e.cat||'🔮 Other', e.amt, dateStr, 'none', e.exclude?'yes':'', e.id]);
     });
   });
   (D.templates||[]).filter(t=>t.type==='spending').forEach(t=>{
     const dateStr = t.startDate ? new Date(t.startDate+'T00:00:00').toLocaleDateString('en-GB') : '';
-    spRows.push([t.startMonth, t.src||'', t.cat||'🔮 Other', t.amt, dateStr, repeatLabel(t.repeat)||t.repeat, t.id]);
+    spRows.push([t.startMonth, t.src||'', t.cat||'🔮 Other', t.amt, dateStr, repeatLabel(t.repeat)||t.repeat, t.exclude?'yes':'', t.id]);
     Object.entries(D.months||{}).sort().forEach(([month, data])=>{
       (data.spending||[]).filter(e=>e.templateId===t.id&&e.overrideMonth).forEach(e=>{
         const ovDate = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-GB') : '';
-        spRows.push([month, e.src||t.src||'', e.cat||t.cat||'🔮 Other', e.amt, ovDate, 'override:'+month, e.id]);
+        spRows.push([month, e.src||t.src||'', e.cat||t.cat||'🔮 Other', e.amt, ovDate, 'override:'+month, e.exclude?'yes':'', e.id]);
       });
     });
   });
+  // Skipped months for spending templates
+  (D.deleted||[]).forEach(d=>{
+    const tmpl=(D.templates||[]).find(t=>t.id===d.templateId&&t.type==='spending');
+    if(tmpl) spRows.push([d.month, tmpl.src||'', tmpl.cat||'🔮 Other', '', '', 'skipped:'+d.month, '', d.templateId+'_skip_'+d.month]);
+  });
 
-  // ── Accounts sheet ──
-  const accRows = [['Account Name','Balance (£)','Type','ID']];
+  // ── Accounts sheet (with balance history) ──
+  const accRows = [['Account Name','Balance (£)','Date','Type','ID']];
   (D.settings.accounts||[]).forEach(a=>{
-    accRows.push([a.name, a.balance, a.type, a.id]);
+    if(a.history&&a.history.length){
+      // Export each history snapshot as a row
+      [...a.history].sort((x,y)=>x.date.localeCompare(y.date)).forEach(h=>{
+        accRows.push([a.name, h.balance, h.date, a.type||'', a.id]);
+      });
+    } else {
+      // Legacy — no history, just current balance
+      accRows.push([a.name, a.balance||0, '', a.type||'', a.id]);
+    }
+  });
+
+  // ── Subscriptions sheet ──
+  const subRows = [['Name','Category','Household','Cost (£)','Billing Cycle','Next Renewal','Status','Notes','ID']];
+  (D.subscriptions||[]).forEach(s=>{
+    subRows.push([
+      s.name||'', s.cat||'', s.household||'',
+      s.cost||0, s.cycle||'monthly',
+      s.renewalDate||'', s.status||'active',
+      s.notes||'', s.id
+    ]);
   });
 
   // ── Settings sheet ──
@@ -2941,11 +2970,15 @@ function exportToExcel(){
   const noteRows = [
     ['HOW TO USE THIS FILE'],
     [''],
-    ['1. Edit any rows in Income, Spending or Accounts sheets'],
+    ['Sheets: Income, Spending, Accounts (with balance history), Subscriptions, Settings'],
+    [''],
+    ['1. Edit any rows in Income, Spending, Accounts or Subscriptions sheets'],
     ['2. You can add new rows — leave the ID column blank for new entries'],
     ['3. To delete an entry, delete the entire row'],
     ['4. Upload the file back using ⬆ Import Excel in the app'],
     ['5. Import merges by ID — existing entries are updated, new rows are added'],
+    [''],
+    ['EXCLUDE COLUMN: Enter "yes" to track without counting in savings/charts'],
     [''],
     ['REPEAT OPTIONS (Repeat column):'],
     ['Code','Plain English'],
@@ -2963,7 +2996,10 @@ function exportToExcel(){
     ['work_3','3rd working day of month'],
     ['work_last','Last working day of month'],
     [''],
-    ['CATEGORY OPTIONS:'],
+    ['SUBSCRIPTION BILLING CYCLES: weekly, monthly, quarterly, biannually, annually'],
+    ['SUBSCRIPTION STATUS OPTIONS: active, paused, cancelled'],
+    [''],
+    ['INCOME/SPENDING CATEGORY OPTIONS:'],
     ['🏠 Housing','🍔 Food','🚗 Transport','💡 Utilities','🛒 Shopping','🎮 Entertainment'],
     ['💊 Health','🎓 Education','✈️ Holidays','👨‍👩‍👧 Family','💳 Debt Payments','📈 Investments','🔮 Other'],
     [''],
@@ -2973,6 +3009,7 @@ function exportToExcel(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incRows), 'Income');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(spRows), 'Spending');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(accRows), 'Accounts');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(subRows), 'Subscriptions');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(settRows), 'Settings');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(noteRows), 'Notes');
 
