@@ -584,6 +584,31 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <input type="checkbox" id="subNoRenewal" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;flex-shrink:0;" onchange="toggleSubRenewalField()">
       <div style="font-size:13px;color:var(--text);">No renewal date</div>
     </div>
+    <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;margin-top:4px;">Renewal Reminders</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+      <div class="field" style="margin-bottom:0;"><label>Reminder 1</label>
+        <select id="subReminder1">
+          <option value="">No reminder</option>
+          <option value="1">1 week before</option>
+          <option value="2">2 weeks before</option>
+          <option value="3">3 weeks before</option>
+          <option value="4">4 weeks before</option>
+          <option value="6">6 weeks before</option>
+          <option value="8">8 weeks before</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0;"><label>Reminder 2</label>
+        <select id="subReminder2">
+          <option value="">No reminder</option>
+          <option value="1">1 week before</option>
+          <option value="2">2 weeks before</option>
+          <option value="3">3 weeks before</option>
+          <option value="4">4 weeks before</option>
+          <option value="6">6 weeks before</option>
+          <option value="8">8 weeks before</option>
+        </select>
+      </div>
+    </div>
     <div class="field"><label>Status</label>
       <select id="subStatus">
         <option value="active">Active</option>
@@ -733,6 +758,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <h2>Settings</h2>
     <div class="field"><label>Your Name</label><input id="setName" placeholder="e.g. Julien"></div>
     <div class="field"><label>Monthly Savings Goal (£)</label><input type="number" id="setGoal" placeholder="e.g. 2000"></div>
+    <div class="field"><label>Subscription Reminder Email</label><input type="email" id="setReminderEmail" placeholder="e.g. you@gmail.com"><div style="font-size:11px;color:var(--muted);margin-top:4px;">Used by the Google Apps Script to send renewal reminders</div></div>
     <div style="margin-top:4px;">
       <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Account Balances (for Net Worth)</div>
       <div id="accountList"></div>
@@ -1932,16 +1958,16 @@ $id('catOv').addEventListener('click',e=>{ if(e.target===$id('catOv')) closeCat(
 function openSettings(){
   $id('setName').value=D.settings.name||'';
   $id('setGoal').value=D.settings.goal||2000;
+  $id('setReminderEmail').value=D.settings.reminderEmail||'';
   renderAccountList();
   $id('settingsOv').classList.add('on');
-  // Load backup list async (shows Drive backups)
   loadBackupList();
 }
 function closeSettings(){ $id('settingsOv').classList.remove('on'); }
 function saveSettings(){
   D.settings.name=$id('setName').value.trim();
   D.settings.goal=parseFloat($id('setGoal').value)||2000;
-  // Account balances already updated in real time
+  D.settings.reminderEmail=$id('setReminderEmail').value.trim();
   save(); closeSettings(); render();
 }
 $id('settingsOv').addEventListener('click',e=>{ if(e.target===$id('settingsOv')) closeSettings(); });
@@ -2925,6 +2951,8 @@ async function parseXlsxFile(file){
       cycle:String(row['Billing Cycle']||'monthly').trim(),
       renewalDate:noRenewal?'':String(row['Next Renewal']||'').trim(),
       noRenewal:noRenewal||undefined,
+      reminder1:row['Reminder 1 (weeks)']?parseInt(row['Reminder 1 (weeks)']):undefined,
+      reminder2:row['Reminder 2 (weeks)']?parseInt(row['Reminder 2 (weeks)']):undefined,
       status:String(row['Status']||'active').trim(),
       notes:String(row['Notes']||'').trim()
     });
@@ -3118,7 +3146,7 @@ function exportToExcel(){
   });
 
   // ── Subscriptions sheet ──
-  const subRows = [['Name','Category','Household','Cost (£)','Variable','Billing Cycle','Next Renewal','No Renewal Date','Status','Notes','ID']];
+  const subRows = [['Name','Category','Household','Cost (£)','Variable','Billing Cycle','Next Renewal','No Renewal Date','Reminder 1 (weeks)','Reminder 2 (weeks)','Status','Notes','ID']];
   (D.subscriptions||[]).forEach(s=>{
     subRows.push([
       s.name||'', s.cat||'', s.household||'',
@@ -3127,6 +3155,7 @@ function exportToExcel(){
       s.cycle||'monthly',
       s.noRenewal?'':s.renewalDate||'',
       s.noRenewal?'yes':'',
+      s.reminder1||'', s.reminder2||'',
       s.status||'active', s.notes||'', s.id
     ]);
   });
@@ -3352,6 +3381,7 @@ function openAddSubscription(){
   $id('subRenewal').value=new Date().toISOString().slice(0,10);
   $id('subNoRenewal').checked=false;
   $id('subRenewalField').style.opacity='1'; $id('subRenewalField').style.pointerEvents='';
+  $id('subReminder1').value=''; $id('subReminder2').value='';
   $id('subStatus').value='active'; $id('subNotes').value='';
   populateHouseholdList();
   $id('subOv').classList.add('on');
@@ -3373,6 +3403,8 @@ function openEditSubscription(id){
   $id('subRenewal').value=s.renewalDate||'';
   $id('subRenewalField').style.opacity=s.noRenewal?'0.35':'1';
   $id('subRenewalField').style.pointerEvents=s.noRenewal?'none':'';
+  $id('subReminder1').value=s.reminder1||'';
+  $id('subReminder2').value=s.reminder2||'';
   $id('subStatus').value=s.status||'active'; $id('subNotes').value=s.notes||'';
   populateHouseholdList();
   $id('subOv').classList.add('on');
@@ -3413,6 +3445,8 @@ function saveSubscription(){
     cycle:$id('subCycle').value,
     renewalDate:noRenewal?'':$id('subRenewal').value,
     noRenewal:noRenewal||undefined,
+    reminder1:$id('subReminder1').value?parseInt($id('subReminder1').value):undefined,
+    reminder2:$id('subReminder2').value?parseInt($id('subReminder2').value):undefined,
     status:$id('subStatus').value, notes:$id('subNotes').value.trim()
   };
   if(editingSubId){ const idx=D.subscriptions.findIndex(x=>x.id===editingSubId); if(idx>=0) D.subscriptions[idx]=entry; }
