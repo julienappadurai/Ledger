@@ -109,6 +109,24 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .sub-status.cancelled{background:rgba(224,92,92,.12);color:var(--red);}
 .sub-empty{text-align:center;padding:32px;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);}
 
+/* ── INVESTMENT TRACKER ── */
+.inv-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+@media(max-width:500px){.inv-summary{grid-template-columns:1fr 1fr;}}
+.inv-account{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:12px;cursor:pointer;transition:border-color .15s;}
+.inv-account:hover{border-color:var(--gold);}
+.inv-account-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.inv-account-icon{font-size:20px;width:28px;text-align:center;flex-shrink:0;}
+.inv-account-info{flex:1;min-width:0;}
+.inv-account-name{font-size:14px;font-weight:500;color:var(--text);}
+.inv-account-meta{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+.inv-account-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.inv-stat{background:var(--s2);border-radius:8px;padding:10px 12px;}
+.inv-stat-label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
+.inv-stat-val{font-family:'Playfair Display',serif;font-size:16px;color:var(--text);}
+.inv-stat-val.pos{color:var(--green);}
+.inv-stat-val.neg{color:var(--red);}
+.inv-empty{text-align:center;padding:32px;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);}
+
 /* ── MONTH STRIP ── */
 .month-strip{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:28px;}
 .mbtn{font-family:'DM Mono',monospace;font-size:11px;padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;}
@@ -308,6 +326,14 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
           </div>
           <span class="mode-option-check">✓</span>
         </div>
+        <div class="mode-option" id="modeOptInvestments" onclick="selectMode('investments')">
+          <span class="mode-option-icon">📈</span>
+          <div class="mode-option-text">
+            <div class="mode-option-name">Investment Tracker</div>
+            <div class="mode-option-desc">Portfolio value & performance</div>
+          </div>
+          <span class="mode-option-check">✓</span>
+        </div>
       </div>
     </div>
     <div class="hbtns">
@@ -330,6 +356,20 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     </div>
     <div class="sub-summary" id="subSummary"></div>
     <div id="subList"></div>
+  </div>
+
+  <!-- INVESTMENT TRACKER VIEW -->
+  <div id="viewInvestments" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+      <button class="hbtn" onclick="openAddInvestmentAccount()" style="color:var(--gold);border-color:rgba(201,168,76,.3);">+ Add Account</button>
+    </div>
+    <div class="inv-summary" id="invSummary"></div>
+    <div class="chart-wrap" style="margin-bottom:20px;display:none;" id="invChartWrap">
+      <div class="chart-title">Portfolio Value Over Time</div>
+      <div id="invChart" style="position:relative;height:160px;"></div>
+      <div id="invLegend" class="legend" style="margin-top:12px;"></div>
+    </div>
+    <div id="invList"></div>
   </div>
 
   <!-- DASHBOARD VIEW -->
@@ -453,6 +493,49 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   </div>
 
 </div>
+</div>
+
+<!-- INVESTMENT ACCOUNT MODAL -->
+<div class="ov" id="invAccOv">
+  <div class="modal" style="max-width:440px;">
+    <h2 id="invAccModalTitle">Add Investment Account</h2>
+    <div class="field"><label>Account Name</label><input id="invAccName" placeholder="e.g. HL Stocks & Shares ISA"></div>
+    <div class="field"><label>Type</label>
+      <select id="invAccType">
+        <option value="Stocks & Shares ISA">📈 Stocks & Shares ISA</option>
+        <option value="Stocks & Shares">📊 Stocks & Shares</option>
+        <option value="Crypto">🪙 Crypto</option>
+        <option value="Cash ISA">💰 Cash ISA</option>
+        <option value="Pension / SIPP">🏦 Pension / SIPP</option>
+        <option value="NS&I Bonds">🇬🇧 NS&I Bonds</option>
+        <option value="Other">🔮 Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Platform / Broker</label><input id="invAccPlatform" placeholder="e.g. Hargreaves Lansdown, Coinbase…"></div>
+    <div class="field"><label>Notes</label><input id="invAccNotes" placeholder="Optional notes…"></div>
+    <div class="mbtns">
+      <button class="mbtn-g" onclick="closeInvAccModal()">Cancel</button>
+      <button class="mbtn-d" id="invAccDelBtn" style="display:none;" onclick="deleteInvestmentAccount()">Delete</button>
+      <button class="mbtn-p" onclick="saveInvestmentAccount()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVESTMENT SNAPSHOT MODAL -->
+<div class="ov" id="invSnapOv" style="z-index:300;">
+  <div class="modal" style="max-width:400px;">
+    <h2 id="invSnapModalTitle">Record Snapshot</h2>
+    <div id="invSnapAccName" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px;"></div>
+    <div class="field"><label>Date</label><input type="date" id="invSnapDate"></div>
+    <div class="field"><label>Current Value (£)</label><input type="number" id="invSnapValue" step="0.01" placeholder="0.00"></div>
+    <div class="field"><label>Total Invested (£)</label><input type="number" id="invSnapInvested" step="0.01" placeholder="0.00"></div>
+    <p style="font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">Leave blank if unchanged from last entry</p>
+    <div class="mbtns">
+      <button class="mbtn-g" onclick="closeInvSnapModal()">Cancel</button>
+      <button class="mbtn-d" id="invSnapDelBtn" style="display:none;" onclick="deleteInvSnapshot()">Delete</button>
+      <button class="mbtn-p" onclick="saveInvSnapshot()">Save</button>
+    </div>
+  </div>
 </div>
 
 <!-- SUBSCRIPTION MODAL -->
@@ -786,7 +869,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 // ═══════════════════════════════════════════════
 // months: { "2025-01": { income: [{id,src,amt}], spending: [{id,cat,amt}] } }
 // settings: { name, goal, accounts: [{id,name,balance}] }
-let D = { months:{}, settings:{ name:'', goal:2000, accounts:[] }, templates:[], deleted:[], subscriptions:[] };
+let D = { months:{}, settings:{ name:'', goal:2000, accounts:[] }, templates:[], deleted:[], subscriptions:[], investments:[] };
 let editingIncome=null, editingCat=null;
 
 const NOW  = new Date();
@@ -957,7 +1040,7 @@ function enterApp(){
   // Load cached data first so app feels instant
   const cached=localStorage.getItem(DATA_KEY);
   if(cached){
-    try{ const loaded=JSON.parse(cached); D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[],subscriptions:[]},loaded); }
+    try{ const loaded=JSON.parse(cached); D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[],subscriptions:[],investments:[]},loaded); }
     catch(e){ console.warn('Cache parse error'); }
   }
   showApp();
@@ -1030,7 +1113,7 @@ async function syncWithDrive(){
       const res=await gapi.client.drive.files.get({fileId,alt:'media'});
       try{
         const driveData=JSON.parse(res.body);
-        D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[],subscriptions:[]},driveData);
+        D=Object.assign({months:{},settings:{name:'',goal:2000,accounts:[]},templates:[],deleted:[],subscriptions:[],investments:[]},driveData);
         localStorage.setItem(DATA_KEY, JSON.stringify(D));
         render(); // Re-render with Drive data
       } catch(e){ console.warn('Drive parse error'); }
@@ -2261,6 +2344,7 @@ function showView(view){
   $id('viewRecurring').style.display     = view==='recurring'     ? '' : 'none';
   $id('viewNetWorth').style.display      = view==='networth'      ? '' : 'none';
   $id('viewSubscriptions').style.display = view==='subscriptions' ? '' : 'none';
+  $id('viewInvestments').style.display   = view==='investments'   ? '' : 'none';
   // Show/hide savings nav buttons based on mode
   ['navDashboard','navRecurring','navNetWorth'].forEach(id=>{
     $id(id).style.display = isSavings ? '' : 'none';
@@ -2271,6 +2355,7 @@ function showView(view){
   if(view==='recurring')     renderTimeline();
   if(view==='networth')      renderNetWorth();
   if(view==='subscriptions') renderSubscriptions();
+  if(view==='investments')   renderInvestments();
 }
 
 // ── MODE DROPDOWN ──
@@ -2292,11 +2377,12 @@ function selectMode(mode){
   closeModeDropdown();
   $id('modeOptSavings').classList.toggle('active',mode==='savings');
   $id('modeOptSubscriptions').classList.toggle('active',mode==='subscriptions');
-  $id('modeSubLabel').innerHTML=mode==='savings'
-    ?'MONTHLY SAVINGS <span class="dd-arrow">▼</span>'
-    :'SUBSCRIPTIONS <span class="dd-arrow">▼</span>';
+  $id('modeOptInvestments').classList.toggle('active',mode==='investments');
+  const labels={savings:'MONTHLY SAVINGS',subscriptions:'SUBSCRIPTIONS',investments:'INVESTMENTS'};
+  $id('modeSubLabel').innerHTML=(labels[mode]||'MONTHLY SAVINGS')+' <span class="dd-arrow">▼</span>';
   if(mode==='savings')       showView('dashboard');
   if(mode==='subscriptions') showView('subscriptions');
+  if(mode==='investments')   showView('investments');
 }
 
 document.addEventListener('click',e=>{
@@ -3219,6 +3305,271 @@ function deleteSubscription(){
   if(!confirm('Delete this subscription?')) return;
   D.subscriptions=(D.subscriptions||[]).filter(x=>x.id!==editingSubId);
   save(); closeSubModal(); renderSubscriptions();
+}
+
+// ═══════════════════════════════════════════════
+// INVESTMENT TRACKER
+// ═══════════════════════════════════════════════
+let editingInvAccId  = null;
+let editingInvSnapId = null;
+let invSnapAccId     = null;
+
+const INV_TYPE_ICONS = {
+  'Stocks & Shares ISA':'📈','Stocks & Shares':'📊','Crypto':'🪙',
+  'Cash ISA':'💰','Pension / SIPP':'🏦','NS&I Bonds':'🇬🇧','Other':'🔮'
+};
+
+function invLatest(history){
+  if(!history||!history.length) return null;
+  return [...history].sort((a,b)=>b.date.localeCompare(a.date))[0];
+}
+function invTotalValue(){ return (D.investments||[]).reduce((s,a)=>{ const v=invLatest(a.valueHistory); return s+(v?v.value:0); },0); }
+function invTotalInvested(){ return (D.investments||[]).reduce((s,a)=>{ const v=invLatest(a.investedHistory); return s+(v?v.amount:0); },0); }
+function invGainLoss(acc){
+  const v=invLatest(acc.valueHistory), i=invLatest(acc.investedHistory);
+  if(!v||!i) return null;
+  const gl=v.value-i.amount;
+  const pct=i.amount>0?(gl/i.amount*100):0;
+  return {gl,pct};
+}
+function invAllDates(){
+  const dates=new Set();
+  (D.investments||[]).forEach(a=>{ (a.valueHistory||[]).forEach(e=>dates.add(e.date)); });
+  return [...dates].sort();
+}
+function invPortfolioAt(date){
+  return (D.investments||[]).reduce((sum,a)=>{
+    const entries=(a.valueHistory||[]).filter(e=>e.date<=date).sort((x,y)=>y.date.localeCompare(x.date));
+    return sum+(entries.length?entries[0].value:0);
+  },0);
+}
+
+function renderInvestments(){
+  const accs=D.investments||[];
+  const totalVal=invTotalValue(), totalInv=invTotalInvested();
+  const totalGL=totalVal-totalInv;
+  const totalPct=totalInv>0?(totalGL/totalInv*100):0;
+
+  $id('invSummary').innerHTML=`
+    <div class="stat-card highlight">
+      <div class="stat-label">Portfolio Value</div>
+      <div class="stat-val" style="font-size:22px;">${fmt(totalVal)}</div>
+      <div class="stat-sub">${accs.length} account${accs.length!==1?'s':''}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Invested</div>
+      <div class="stat-val" style="font-size:22px;">${fmt(totalInv)}</div>
+      <div class="stat-sub">amount put in</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Overall Gain / Loss</div>
+      <div class="stat-val ${totalGL>=0?'g':'r'}" style="font-size:22px;">${fmtSign(totalGL)}</div>
+      <div class="stat-sub" style="color:${totalGL>=0?'var(--green)':'var(--red)'};">${totalPct>=0?'+':''}${totalPct.toFixed(1)}%</div>
+    </div>`;
+
+  const dates=invAllDates();
+  const chartWrap=$id('invChartWrap');
+  if(dates.length>=2){ chartWrap.style.display=''; renderInvChart(accs,dates); }
+  else { chartWrap.style.display='none'; }
+
+  const listEl=$id('invList');
+  if(!accs.length){ listEl.innerHTML='<div class="inv-empty">No investment accounts yet.<br>Tap + Add Account to get started.</div>'; return; }
+  listEl.innerHTML='';
+  accs.forEach(acc=>{
+    const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
+    const gl=invGainLoss(acc), icon=INV_TYPE_ICONS[acc.type]||'🔮';
+    const card=document.createElement('div'); card.className='inv-account';
+    card.innerHTML=`
+      <div class="inv-account-header">
+        <div class="inv-account-icon">${icon}</div>
+        <div class="inv-account-info">
+          <div class="inv-account-name">${esc(acc.name)}</div>
+          <div class="inv-account-meta">${esc(acc.type)}${acc.platform?' · '+esc(acc.platform):''}</div>
+        </div>
+        <button onclick="event.stopPropagation();openEditInvAcc('${acc.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:4px 8px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>
+      </div>
+      <div class="inv-account-stats">
+        <div class="inv-stat"><div class="inv-stat-label">Current Value</div><div class="inv-stat-val">${latVal?fmt(latVal.value):'—'}</div></div>
+        <div class="inv-stat"><div class="inv-stat-label">Invested</div><div class="inv-stat-val">${latInv?fmt(latInv.amount):'—'}</div></div>
+        <div class="inv-stat"><div class="inv-stat-label">Gain / Loss</div>
+          <div class="inv-stat-val ${gl?(gl.gl>=0?'pos':'neg'):''}">
+            ${gl?fmtSign(gl.gl)+'<div style="font-size:11px;margin-top:2px;font-family:\'DM Mono\',monospace;">'+(gl.pct>=0?'+':'')+gl.pct.toFixed(1)+'%</div>':'—'}
+          </div>
+        </div>
+      </div>
+      ${acc.notes?`<div style="font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">${esc(acc.notes)}</div>`:''}`;
+    card.onclick=()=>openInvSnapshot(acc.id);
+    listEl.appendChild(card);
+
+    // History table
+    const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort().reverse();
+    if(allDates.length){
+      const histWrap=document.createElement('div');
+      histWrap.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);border-top:none;padding:12px 16px;margin-bottom:16px;margin-top:-4px;';
+      histWrap.innerHTML=`<table class="year-table" style="width:100%;">
+        <thead><tr><th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Invested</th><th style="text-align:right;">G/L</th><th></th></tr></thead>
+        <tbody>${allDates.map(date=>{
+          const vE=(acc.valueHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
+          const iE=(acc.investedHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
+          const gl=vE&&iE?vE.value-iE.amount:null;
+          const pct=gl!==null&&iE&&iE.amount>0?(gl/iE.amount*100):null;
+          const hasEntry=(acc.valueHistory||[]).some(e=>e.date===date)||(acc.investedHistory||[]).some(e=>e.date===date);
+          return `<tr>
+            <td style="font-family:'DM Mono',monospace;font-size:11px;">${new Date(date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;">${vE?fmt(vE.value):'—'}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;">${iE?fmt(iE.amount):'—'}</td>
+            <td style="text-align:right;font-family:'DM Mono',monospace;" class="${gl===null?'':gl>=0?'saved-pos':'saved-neg'}">${gl===null?'—':fmtSign(gl)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'')}</td>
+            <td style="text-align:right;">${hasEntry?`<button onclick="openEditInvSnapshot('${acc.id}','${date}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>`:''}</td>
+          </tr>`;
+        }).join('')}</tbody></table>
+      <button onclick="openInvSnapshot('${acc.id}')" style="width:100%;margin-top:10px;padding:8px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Record Snapshot</button>`;
+      listEl.appendChild(histWrap);
+    }
+  });
+}
+
+function renderInvChart(accs,dates){
+  const chartEl=$id('invChart'); chartEl.innerHTML='';
+  const COLORS=['var(--gold)','var(--blue)','var(--green)','var(--red)','#a78bfa','#f97316','#06b6d4'];
+  const totalSeries=dates.map(d=>invPortfolioAt(d));
+  const accSeries=accs.map((a,i)=>({ name:a.name, color:COLORS[(i+1)%COLORS.length],
+    values:dates.map(d=>{ const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date)); return e.length?e[0].value:0; }) }));
+  const allVals=[...totalSeries,...accSeries.flatMap(s=>s.values)];
+  const minVal=Math.min(...allVals),maxVal=Math.max(...allVals),range=maxVal-minVal||1;
+  const VW=500,VH=140,PAD_L=44,PAD_R=10,PAD_T=10,PAD_B=25;
+  const plotW=VW-PAD_L-PAD_R,plotH=VH-PAD_T-PAD_B;
+  const toX=i=>PAD_L+(i/(dates.length-1||1))*plotW;
+  const toY=v=>PAD_T+plotH-((v-minVal)/range*plotH);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox',`0 0 ${VW} ${VH+PAD_B}`);
+  svg.setAttribute('width','100%'); svg.setAttribute('height','170');
+  svg.setAttribute('preserveAspectRatio','none'); svg.style.display='block';
+  const drawLine=(values,color,width)=>{
+    const pts=values.map((v,i)=>({x:toX(i),y:toY(v)}));
+    const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    line.setAttribute('points',pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
+    line.setAttribute('fill','none'); line.setAttribute('stroke',color);
+    line.setAttribute('stroke-width',width); line.setAttribute('stroke-linejoin','round');
+    line.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(line);
+    pts.forEach(p=>{ const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',p.x.toFixed(1)); c.setAttribute('cy',p.y.toFixed(1));
+      c.setAttribute('r',4); c.setAttribute('fill',color);
+      c.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(c); });
+  };
+  accSeries.forEach(s=>drawLine(s.values,s.color,1.5));
+  drawLine(totalSeries,'var(--gold)',2.5);
+  dates.forEach((d,i)=>{
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x',toX(i).toFixed(1)); lbl.setAttribute('y',(VH+PAD_B-4).toString());
+    lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('font-size','11');
+    lbl.setAttribute('fill','#7a7870'); lbl.setAttribute('font-family','DM Mono, monospace');
+    lbl.textContent=new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    svg.appendChild(lbl);
+  });
+  [[minVal,VH-PAD_B+2],[maxVal,PAD_T+8]].forEach(([v,y])=>{
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x','2'); lbl.setAttribute('y',y.toString());
+    lbl.setAttribute('font-size','11'); lbl.setAttribute('fill','#7a7870');
+    lbl.setAttribute('font-family','DM Mono, monospace');
+    lbl.textContent='£'+Math.round(v/1000)+'k'; svg.appendChild(lbl);
+  });
+  chartEl.appendChild(svg);
+  const legEl=$id('invLegend'); legEl.innerHTML='';
+  [{name:'Total Portfolio',color:'var(--gold)'},...accSeries].forEach(s=>{
+    legEl.innerHTML+=`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div>${esc(s.name)}</div>`;
+  });
+}
+
+function openAddInvestmentAccount(){
+  editingInvAccId=null;
+  $id('invAccModalTitle').textContent='Add Investment Account';
+  $id('invAccDelBtn').style.display='none';
+  $id('invAccName').value=''; $id('invAccType').value='Stocks & Shares ISA';
+  $id('invAccPlatform').value=''; $id('invAccNotes').value='';
+  $id('invAccOv').classList.add('on');
+  setTimeout(()=>$id('invAccName').focus(),100);
+}
+function openEditInvAcc(id){
+  const acc=(D.investments||[]).find(x=>x.id===id); if(!acc) return;
+  editingInvAccId=id;
+  $id('invAccModalTitle').textContent='Edit Account';
+  $id('invAccDelBtn').style.display='';
+  $id('invAccName').value=acc.name||''; $id('invAccType').value=acc.type||'Other';
+  $id('invAccPlatform').value=acc.platform||''; $id('invAccNotes').value=acc.notes||'';
+  $id('invAccOv').classList.add('on');
+}
+function closeInvAccModal(){ $id('invAccOv').classList.remove('on'); }
+$id('invAccOv').addEventListener('click',e=>{ if(e.target===$id('invAccOv')) closeInvAccModal(); });
+
+function saveInvestmentAccount(){
+  const name=$id('invAccName').value.trim();
+  if(!name){ alert('Please enter an account name.'); return; }
+  if(!D.investments) D.investments=[];
+  const existing=editingInvAccId?(D.investments.find(x=>x.id===editingInvAccId)):null;
+  const entry={
+    id:editingInvAccId||Date.now().toString(), name,
+    type:$id('invAccType').value, platform:$id('invAccPlatform').value.trim(),
+    notes:$id('invAccNotes').value.trim(),
+    valueHistory:existing?existing.valueHistory:[],
+    investedHistory:existing?existing.investedHistory:[]
+  };
+  if(editingInvAccId){ const idx=D.investments.findIndex(x=>x.id===editingInvAccId); if(idx>=0) D.investments[idx]=entry; }
+  else D.investments.push(entry);
+  save(); closeInvAccModal(); renderInvestments();
+}
+function deleteInvestmentAccount(){
+  if(!editingInvAccId) return;
+  if(!confirm('Delete this investment account and all its history?')) return;
+  D.investments=(D.investments||[]).filter(x=>x.id!==editingInvAccId);
+  save(); closeInvAccModal(); renderInvestments();
+}
+
+function openInvSnapshot(accId){
+  invSnapAccId=accId; editingInvSnapId=null;
+  const acc=(D.investments||[]).find(x=>x.id===accId); if(!acc) return;
+  $id('invSnapModalTitle').textContent='Record Snapshot';
+  $id('invSnapAccName').textContent=acc.name+(acc.platform?' · '+acc.platform:'');
+  $id('invSnapDelBtn').style.display='none';
+  $id('invSnapDate').value=new Date().toISOString().slice(0,10);
+  const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
+  $id('invSnapValue').value=latVal?latVal.value:'';
+  $id('invSnapInvested').value=latInv?latInv.amount:'';
+  $id('invSnapOv').classList.add('on');
+}
+function openEditInvSnapshot(accId,date){
+  invSnapAccId=accId; editingInvSnapId=date;
+  const acc=(D.investments||[]).find(x=>x.id===accId); if(!acc) return;
+  const vE=(acc.valueHistory||[]).find(e=>e.date===date);
+  const iE=(acc.investedHistory||[]).find(e=>e.date===date);
+  $id('invSnapModalTitle').textContent='Edit Snapshot';
+  $id('invSnapAccName').textContent=acc.name;
+  $id('invSnapDelBtn').style.display='';
+  $id('invSnapDate').value=date;
+  $id('invSnapValue').value=vE?vE.value:'';
+  $id('invSnapInvested').value=iE?iE.amount:'';
+  $id('invSnapOv').classList.add('on');
+}
+function closeInvSnapModal(){ $id('invSnapOv').classList.remove('on'); }
+$id('invSnapOv').addEventListener('click',e=>{ if(e.target===$id('invSnapOv')) closeInvSnapModal(); });
+
+function saveInvSnapshot(){
+  const date=$id('invSnapDate').value;
+  const rawVal=$id('invSnapValue').value, rawInv=$id('invSnapInvested').value;
+  if(!date){ alert('Please enter a date.'); return; }
+  if(rawVal===''&&rawInv===''){ alert('Please enter at least a current value or invested amount.'); return; }
+  const acc=(D.investments||[]).find(x=>x.id===invSnapAccId); if(!acc) return;
+  if(!acc.valueHistory) acc.valueHistory=[];
+  if(!acc.investedHistory) acc.investedHistory=[];
+  if(rawVal!==''){ const val=parseFloat(rawVal); if(!isNaN(val)){ acc.valueHistory=acc.valueHistory.filter(e=>e.date!==date); acc.valueHistory.push({id:`v_${Date.now()}`,value:val,date}); } }
+  if(rawInv!==''){ const inv=parseFloat(rawInv); if(!isNaN(inv)){ acc.investedHistory=acc.investedHistory.filter(e=>e.date!==date); acc.investedHistory.push({id:`i_${Date.now()}`,amount:inv,date}); } }
+  save(); closeInvSnapModal(); renderInvestments();
+}
+function deleteInvSnapshot(){
+  if(!editingInvSnapId||!invSnapAccId) return;
+  const acc=(D.investments||[]).find(x=>x.id===invSnapAccId); if(!acc) return;
+  acc.valueHistory=(acc.valueHistory||[]).filter(e=>e.date!==editingInvSnapId);
+  acc.investedHistory=(acc.investedHistory||[]).filter(e=>e.date!==editingInvSnapId);
+  save(); closeInvSnapModal(); renderInvestments();
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
