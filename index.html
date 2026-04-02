@@ -2785,7 +2785,7 @@ async function parseXlsxFile(file){
   const buf=await file.arrayBuffer();
   const wb=XLSX.read(buf,{type:'array',cellDates:false});
 
-  const result={income:[],spending:[],accounts:[],templates:[],overrides:[],deletedIds:[]};
+  const result={income:[],spending:[],accounts:[],investments:[],templates:[],overrides:[],deletedIds:[]};
   const errors=[];
 
   // Helper to get sheet rows as objects
@@ -2873,6 +2873,30 @@ async function parseXlsxFile(file){
     const accId=String(row['ID']||'').trim(); result.accounts.push({id:accId||`xl_acc_${Date.now()}_${i}`,name,balance,type:['checking','savings','credit','investment'].includes(type)?type:'checking'});
   });
 
+  // ── Parse Investments sheet ──
+  // Group rows by account ID/name — each row is a dated snapshot
+  const invMap={};
+  getRows('Investments').forEach((row,i)=>{
+    const name=String(row['Account Name']||row['Name']||'').trim();
+    const type=String(row['Type']||'Other').trim();
+    const platform=String(row['Platform']||row['Platform / Broker']||'').trim();
+    const notes=String(row['Notes']||'').trim();
+    const date=parseExcelDate(row['Date']||'');
+    const rawVal=String(row['Current Value (£)']||row['Value']||'').replace(/[£,]/g,'');
+    const rawInv=String(row['Total Invested (£)']||row['Invested']||'').replace(/[£,]/g,'');
+    const val=rawVal!==''?parseFloat(rawVal):null;
+    const inv=rawInv!==''?parseFloat(rawInv):null;
+    const accId=String(row['ID']||'').trim();
+    const key=accId||name;
+    if(!key) return;
+    if(!invMap[key]) invMap[key]={id:accId||`xl_inv_${Date.now()}_${i}`,name,type,platform,notes,valueHistory:[],investedHistory:[]};
+    if(date){
+      if(val!==null&&!isNaN(val)) invMap[key].valueHistory.push({id:`v_xl_${Date.now()}_${i}`,value:val,date});
+      if(inv!==null&&!isNaN(inv)) invMap[key].investedHistory.push({id:`i_xl_${Date.now()}_${i}`,amount:inv,date});
+    }
+  });
+  result.investments=Object.values(invMap);
+
   xlsxParsedData=result;
 
   // Show preview
@@ -2882,18 +2906,19 @@ async function parseXlsxFile(file){
   if(result.templates.filter(t=>t.type==='income').length) lines.push(`✓ ${result.templates.filter(t=>t.type==='income').length} recurring income templates`);
   if(result.templates.filter(t=>t.type==='spending').length) lines.push(`✓ ${result.templates.filter(t=>t.type==='spending').length} recurring spending templates`);
   if(result.overrides&&result.overrides.length) lines.push(`✓ ${result.overrides.length} month overrides`);
-  if(result.accounts.length) lines.push(`✓ ${result.accounts.length} accounts`);
+  if(result.accounts.length) lines.push(`✓ ${result.accounts.length} net worth accounts`);
+  if(result.investments.length) lines.push(`✓ ${result.investments.length} investment accounts`);
   if(errors.length) errors.forEach(e=>lines.push(`⚠ ${e}`));
   if(!lines.length){ lines.push('No data found — check the sheet names and column headers match the template.'); }
 
   $id('xlsxPreviewContent').innerHTML=lines.map(l=>`<div style="color:${l.startsWith('⚠')?'var(--gold)':l.startsWith('✓')?'var(--green)':'var(--muted)'}">${esc(l)}</div>`).join('');
   $id('xlsxPreview').style.display='';
-  $id('xlsxImportBtn').style.display=(result.income.length||result.spending.length||result.templates.length||result.accounts.length)?'':'none';
+  $id('xlsxImportBtn').style.display=(result.income.length||result.spending.length||result.templates.length||result.accounts.length||result.investments.length)?'':'none';
 }
 
 function confirmXlsxImport(){
   if(!xlsxParsedData) return;
-  const {income,spending,templates,accounts,overrides,deletedIds}=xlsxParsedData;
+  const {income,spending,templates,accounts,investments,overrides,deletedIds}=xlsxParsedData;
   let added=0,updated=0,removed=0;
 
   income.forEach(e=>{
@@ -2958,6 +2983,22 @@ function confirmXlsxImport(){
       const ex=D.settings.accounts.find(x=>x.name.toLowerCase()===a.name.toLowerCase());
       if(ex){ex.balance=a.balance;ex.type=a.type;updated++;}
       else{D.settings.accounts.push({...a,id:Date.now()+'_'+Math.random().toString(36).slice(2,5)});added++;}
+    }
+  });
+
+  // ── Merge investment accounts ──
+  if(!D.investments) D.investments=[];
+  (investments||[]).forEach(a=>{
+    const ex=D.investments.find(x=>x.id===a.id||(x.name.toLowerCase()===a.name.toLowerCase()));
+    if(ex){
+      // Merge history entries by date
+      (a.valueHistory||[]).forEach(e=>{ if(!ex.valueHistory.find(x=>x.date===e.date)){ ex.valueHistory.push(e); updated++; } });
+      (a.investedHistory||[]).forEach(e=>{ if(!ex.investedHistory.find(x=>x.date===e.date)){ ex.investedHistory.push(e); updated++; } });
+      if(a.type) ex.type=a.type;
+      if(a.platform) ex.platform=a.platform;
+    } else {
+      D.investments.push({...a, id:a.id&&!a.id.startsWith('xl_')?a.id:Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+      added++;
     }
   });
 
@@ -3056,7 +3097,7 @@ function exportToExcel(){
   const noteRows = [
     ['HOW TO USE THIS FILE'],
     [''],
-    ['Sheets: Income, Spending, Accounts (with balance history), Subscriptions, Settings'],
+    ['Sheets: Income, Spending, Accounts (with balance history), Subscriptions, Investments, Settings'],
     [''],
     ['1. Edit any rows in Income, Spending, Accounts or Subscriptions sheets'],
     ['2. You can add new rows — leave the ID column blank for new entries'],
@@ -3092,10 +3133,28 @@ function exportToExcel(){
     ['ACCOUNT TYPE OPTIONS: checking, savings, credit, investment'],
   ];
 
+  // ── Investments sheet ──
+  const invRows = [['Account Name','Type','Platform','Date','Current Value (£)','Total Invested (£)','Notes','ID']];
+  (D.investments||[]).forEach(acc=>{
+    // Get all unique dates across value and invested history
+    const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort();
+    if(allDates.length){
+      allDates.forEach(date=>{
+        const vE=(acc.valueHistory||[]).find(e=>e.date===date);
+        const iE=(acc.investedHistory||[]).find(e=>e.date===date);
+        invRows.push([acc.name||'', acc.type||'', acc.platform||'', date, vE?vE.value:'', iE?iE.amount:'', acc.notes||'', acc.id]);
+      });
+    } else {
+      // Account exists but no snapshots yet
+      invRows.push([acc.name||'', acc.type||'', acc.platform||'', '', '', '', acc.notes||'', acc.id]);
+    }
+  });
+
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incRows), 'Income');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(spRows), 'Spending');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(accRows), 'Accounts');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(subRows), 'Subscriptions');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(invRows), 'Investments');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(settRows), 'Settings');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(noteRows), 'Notes');
 
