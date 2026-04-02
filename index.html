@@ -572,7 +572,11 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
         </select>
       </div>
     </div>
-    <div class="field"><label>Next Renewal Date</label><input type="date" id="subRenewal"></div>
+    <div class="field" id="subRenewalField"><label>Next Renewal Date</label><input type="date" id="subRenewal"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:-8px;margin-bottom:14px;padding:8px 10px;background:var(--s2);border-radius:8px;">
+      <input type="checkbox" id="subNoRenewal" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;flex-shrink:0;" onchange="toggleSubRenewalField()">
+      <div style="font-size:13px;color:var(--text);">No renewal date</div>
+    </div>
     <div class="field"><label>Status</label>
       <select id="subStatus">
         <option value="active">Active</option>
@@ -3259,9 +3263,10 @@ function renderSubscriptions(){
       <span class="sub-group-cost">${fmt(groupMonthly)}/mo</span>
     </div>`;
     items.forEach(s=>{
-      const days=daysUntilRenewal(s.renewalDate);
+      const days=s.noRenewal?null:daysUntilRenewal(s.renewalDate);
       const renewalCls=days===null?'ok':days<0?'overdue':days<=7?'soon':'ok';
-      const renewalLbl=days===null?'—':days<0?'Overdue':days===0?'Today':days===1?'Tomorrow':`${days} days`;
+      const renewalLbl=s.noRenewal?'No renewal':days===null?'—':days<0?'Overdue':days===0?'Today':days===1?'Tomorrow':`${days} days`;
+      const renewalDate=s.noRenewal?'—':s.renewalDate?new Date(s.renewalDate+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
       const icon=SUB_CAT_ICONS[s.cat]||'🔮';
       const row=document.createElement('div');
       row.className='sub-row';
@@ -3276,9 +3281,12 @@ function renderSubscriptions(){
             ${s.notes?`<span style="margin-left:6px;opacity:.7;">· ${esc(s.notes)}</span>`:''}
           </div>
         </div>
-        <div class="sub-right">
+        <div style="text-align:right;flex-shrink:0;min-width:90px;">
+          <div class="sub-renewal ${renewalCls}" style="font-size:11px;">${renewalDate}</div>
+          <div class="sub-renewal ${renewalCls}" style="font-size:10px;margin-top:2px;">${s.noRenewal?'':renewalLbl!==renewalDate?renewalLbl:''}</div>
+        </div>
+        <div class="sub-right" style="min-width:70px;">
           <div class="sub-cost">${fmt(s.cost)}</div>
-          <div class="sub-renewal ${renewalCls}">${renewalLbl}</div>
         </div>`;
       row.onclick=()=>openEditSubscription(s.id);
       wrap.appendChild(row);
@@ -3292,43 +3300,44 @@ function openAddSubscription(){
   editingSubId=null;
   $id('subModalTitle').textContent='Add Subscription';
   $id('subDelBtn').style.display='none';
-  $id('subName').value='';
-  $id('subCat').value='🎬 Streaming';
-  $id('subHousehold').value='';
-  $id('subCost').value='';
+  $id('subName').value=''; $id('subCat').value='🎬 Streaming';
+  $id('subHousehold').value=''; $id('subCost').value='';
   $id('subCycle').value='monthly';
   $id('subRenewal').value=new Date().toISOString().slice(0,10);
-  $id('subStatus').value='active';
-  $id('subNotes').value='';
-  // Populate household datalist
+  $id('subNoRenewal').checked=false;
+  $id('subRenewalField').style.opacity='1'; $id('subRenewalField').style.pointerEvents='';
+  $id('subStatus').value='active'; $id('subNotes').value='';
   populateHouseholdList();
   $id('subOv').classList.add('on');
   setTimeout(()=>$id('subName').focus(),100);
 }
 
 function openEditSubscription(id){
-  const s=(D.subscriptions||[]).find(x=>x.id===id);
-  if(!s) return;
+  const s=(D.subscriptions||[]).find(x=>x.id===id); if(!s) return;
   editingSubId=id;
   $id('subModalTitle').textContent='Edit Subscription';
   $id('subDelBtn').style.display='';
-  $id('subName').value=s.name||'';
-  $id('subCat').value=s.cat||'🔮 Other';
-  $id('subHousehold').value=s.household||'';
-  $id('subCost').value=s.cost||'';
+  $id('subName').value=s.name||''; $id('subCat').value=s.cat||'🔮 Other';
+  $id('subHousehold').value=s.household||''; $id('subCost').value=s.cost||'';
   $id('subCycle').value=s.cycle||'monthly';
+  $id('subNoRenewal').checked=!!s.noRenewal;
   $id('subRenewal').value=s.renewalDate||'';
-  $id('subStatus').value=s.status||'active';
-  $id('subNotes').value=s.notes||'';
+  $id('subRenewalField').style.opacity=s.noRenewal?'0.35':'1';
+  $id('subRenewalField').style.pointerEvents=s.noRenewal?'none':'';
+  $id('subStatus').value=s.status||'active'; $id('subNotes').value=s.notes||'';
   populateHouseholdList();
   $id('subOv').classList.add('on');
 }
 
+function toggleSubRenewalField(){
+  const noRenewal=$id('subNoRenewal').checked;
+  $id('subRenewalField').style.opacity=noRenewal?'0.35':'1';
+  $id('subRenewalField').style.pointerEvents=noRenewal?'none':'';
+}
+
 function populateHouseholdList(){
   const dl=$id('householdSuggestions'); dl.innerHTML='';
-  getHouseholds().forEach(h=>{
-    const opt=document.createElement('option'); opt.value=h; dl.appendChild(opt);
-  });
+  getHouseholds().forEach(h=>{ const opt=document.createElement('option'); opt.value=h; dl.appendChild(opt); });
 }
 
 function closeSubModal(){ $id('subOv').classList.remove('on'); }
@@ -3339,23 +3348,17 @@ function saveSubscription(){
   const cost=parseFloat($id('subCost').value);
   if(!name||isNaN(cost)||cost<0){ alert('Please enter a name and valid cost.'); return; }
   if(!D.subscriptions) D.subscriptions=[];
+  const noRenewal=$id('subNoRenewal').checked;
   const entry={
-    id: editingSubId||Date.now().toString(),
-    name,
-    cat:$id('subCat').value,
-    household:$id('subHousehold').value.trim(),
-    cost,
-    cycle:$id('subCycle').value,
-    renewalDate:$id('subRenewal').value,
-    status:$id('subStatus').value,
-    notes:$id('subNotes').value.trim()
+    id:editingSubId||Date.now().toString(), name,
+    cat:$id('subCat').value, household:$id('subHousehold').value.trim(),
+    cost, cycle:$id('subCycle').value,
+    renewalDate:noRenewal?'':$id('subRenewal').value,
+    noRenewal:noRenewal||undefined,
+    status:$id('subStatus').value, notes:$id('subNotes').value.trim()
   };
-  if(editingSubId){
-    const idx=D.subscriptions.findIndex(x=>x.id===editingSubId);
-    if(idx>=0) D.subscriptions[idx]=entry;
-  } else {
-    D.subscriptions.push(entry);
-  }
+  if(editingSubId){ const idx=D.subscriptions.findIndex(x=>x.id===editingSubId); if(idx>=0) D.subscriptions[idx]=entry; }
+  else D.subscriptions.push(entry);
   save(); closeSubModal(); renderSubscriptions();
 }
 
