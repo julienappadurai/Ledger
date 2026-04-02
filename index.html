@@ -560,7 +560,14 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       </select>
     </div>
     <div class="field"><label>Household</label><input id="subHousehold" placeholder="e.g. My House, Mum's House…" list="householdSuggestions"><datalist id="householdSuggestions"></datalist></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:8px;">
+      <input type="checkbox" id="subVariable" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;flex-shrink:0;" onchange="toggleSubVariableCost()">
+      <div>
+        <div style="font-size:13px;color:var(--text);">Variable amount</div>
+        <div style="font-size:11px;color:var(--muted);">Amount changes — exclude from monthly total</div>
+      </div>
+    </div>
+    <div id="subFixedCostField" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div class="field"><label>Cost (£)</label><input type="number" id="subCost" step="0.01" placeholder="0.00"></div>
       <div class="field"><label>Billing Cycle</label>
         <select id="subCycle">
@@ -2901,6 +2908,28 @@ async function parseXlsxFile(file){
   });
   result.investments=Object.values(invMap);
 
+  // ── Parse Subscriptions sheet ──
+  result.subscriptions=[];
+  getRows('Subscriptions').forEach((row,i)=>{
+    const name=String(row['Name']||'').trim(); if(!name) return;
+    const isVar=String(row['Variable']||'').toLowerCase()==='yes';
+    const cost=parseFloat(String(row['Cost (£)']||row['Cost']||'0').replace(/[£,]/g,''))||0;
+    const noRenewal=String(row['No Renewal Date']||row['No Renewal']||'').toLowerCase()==='yes';
+    const subId=String(row['ID']||'').trim();
+    result.subscriptions.push({
+      id:subId||`xl_sub_${Date.now()}_${i}`,
+      name, cat:String(row['Category']||'🔮 Other').trim(),
+      household:String(row['Household']||'').trim(),
+      variable:isVar||undefined,
+      cost:isVar?null:cost,
+      cycle:String(row['Billing Cycle']||'monthly').trim(),
+      renewalDate:noRenewal?'':String(row['Next Renewal']||'').trim(),
+      noRenewal:noRenewal||undefined,
+      status:String(row['Status']||'active').trim(),
+      notes:String(row['Notes']||'').trim()
+    });
+  });
+
   xlsxParsedData=result;
 
   // Show preview
@@ -2912,17 +2941,18 @@ async function parseXlsxFile(file){
   if(result.overrides&&result.overrides.length) lines.push(`✓ ${result.overrides.length} month overrides`);
   if(result.accounts.length) lines.push(`✓ ${result.accounts.length} net worth accounts`);
   if(result.investments.length) lines.push(`✓ ${result.investments.length} investment accounts`);
+  if(result.subscriptions.length) lines.push(`✓ ${result.subscriptions.length} subscriptions`);
   if(errors.length) errors.forEach(e=>lines.push(`⚠ ${e}`));
   if(!lines.length){ lines.push('No data found — check the sheet names and column headers match the template.'); }
 
   $id('xlsxPreviewContent').innerHTML=lines.map(l=>`<div style="color:${l.startsWith('⚠')?'var(--gold)':l.startsWith('✓')?'var(--green)':'var(--muted)'}">${esc(l)}</div>`).join('');
   $id('xlsxPreview').style.display='';
-  $id('xlsxImportBtn').style.display=(result.income.length||result.spending.length||result.templates.length||result.accounts.length||result.investments.length)?'':'none';
+  $id('xlsxImportBtn').style.display=(result.income.length||result.spending.length||result.templates.length||result.accounts.length||result.investments.length||result.subscriptions.length)?'':'none';
 }
 
 function confirmXlsxImport(){
   if(!xlsxParsedData) return;
-  const {income,spending,templates,accounts,investments,overrides,deletedIds}=xlsxParsedData;
+  const {income,spending,templates,accounts,investments,subscriptions,overrides,deletedIds}=xlsxParsedData;
   let added=0,updated=0,removed=0;
 
   income.forEach(e=>{
@@ -2988,6 +3018,14 @@ function confirmXlsxImport(){
       if(ex){ex.balance=a.balance;ex.type=a.type;updated++;}
       else{D.settings.accounts.push({...a,id:Date.now()+'_'+Math.random().toString(36).slice(2,5)});added++;}
     }
+  });
+
+  // ── Merge subscriptions ──
+  if(!D.subscriptions) D.subscriptions=[];
+  (subscriptions||[]).forEach(s=>{
+    const ex=D.subscriptions.find(x=>x.id===s.id||(x.name.toLowerCase()===s.name.toLowerCase()&&x.household===s.household));
+    if(ex){ Object.assign(ex,s); updated++; }
+    else { D.subscriptions.push({...s,id:s.id&&!s.id.startsWith('xl_')?s.id:Date.now()+'_'+Math.random().toString(36).slice(2,5)}); added++; }
   });
 
   // ── Merge investment accounts ──
@@ -3080,13 +3118,16 @@ function exportToExcel(){
   });
 
   // ── Subscriptions sheet ──
-  const subRows = [['Name','Category','Household','Cost (£)','Billing Cycle','Next Renewal','Status','Notes','ID']];
+  const subRows = [['Name','Category','Household','Cost (£)','Variable','Billing Cycle','Next Renewal','No Renewal Date','Status','Notes','ID']];
   (D.subscriptions||[]).forEach(s=>{
     subRows.push([
       s.name||'', s.cat||'', s.household||'',
-      s.cost||0, s.cycle||'monthly',
-      s.renewalDate||'', s.status||'active',
-      s.notes||'', s.id
+      s.variable?'':s.cost||0,
+      s.variable?'yes':'',
+      s.cycle||'monthly',
+      s.noRenewal?'':s.renewalDate||'',
+      s.noRenewal?'yes':'',
+      s.status||'active', s.notes||'', s.id
     ]);
   });
 
@@ -3194,8 +3235,15 @@ const SUB_CAT_ICONS = {
   '💡 Utilities':'💡','🔮 Other':'🔮'
 };
 
-function subMonthly(cost, cycle){
-  return cost / (SUB_CYCLES[cycle]||1);
+function subMonthly(s){
+  if(s.variable) return 0; // excluded from totals
+  const m=SUB_CYCLES[s.cycle]||1;
+  return (s.cost||0)/m;
+}
+
+function subDisplayCost(s){
+  if(s.variable) return 'Variable';
+  return fmt(s.cost||0);
 }
 
 function daysUntilRenewal(dateStr){
@@ -3213,29 +3261,29 @@ function getHouseholds(){
 }
 
 function renderSubscriptions(){
-  const subs = getSubscriptions();
-  const summaryEl = $id('subSummary');
-  const listEl = $id('subList');
+  const subs=getSubscriptions();
+  const summaryEl=$id('subSummary');
+  const listEl=$id('subList');
 
   // ── Summary cards ──
-  const active = subs.filter(s=>s.status==='active');
-  const monthly = active.reduce((sum,s)=>sum+subMonthly(s.cost,s.cycle),0);
-  const annual  = monthly*12;
-  const soonCount = active.filter(s=>{ const d=daysUntilRenewal(s.renewalDate); return d!==null&&d<=7&&d>=0; }).length;
+  const active=subs.filter(s=>s.status==='active');
+  const monthly=active.reduce((sum,s)=>sum+subMonthly(s),0);
+  const varCount=active.filter(s=>s.variable).length;
+  const soonCount=active.filter(s=>{ const d=s.noRenewal?null:daysUntilRenewal(s.renewalDate); return d!==null&&d<=7&&d>=0; }).length;
   summaryEl.innerHTML=`
     <div class="stat-card highlight">
       <div class="stat-label">Monthly Cost</div>
       <div class="stat-val" style="font-size:22px;">${fmt(monthly)}</div>
-      <div class="stat-sub">${active.length} active subscription${active.length!==1?'s':''}</div>
+      <div class="stat-sub">${active.length} active${varCount?` · ${varCount} variable`:''}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Annual Cost</div>
-      <div class="stat-val r" style="font-size:22px;">${fmt(annual)}</div>
-      <div class="stat-sub">per year</div>
+      <div class="stat-val r" style="font-size:22px;">${fmt(monthly*12)}</div>
+      <div class="stat-sub">excl. variable</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Renewals Soon</div>
-      <div class="stat-val ${soonCount>0?'':'b'}" style="font-size:22px;color:${soonCount>0?'var(--gold)':'var(--muted)'};">${soonCount}</div>
+      <div class="stat-val" style="font-size:22px;color:${soonCount>0?'var(--gold)':'var(--muted)'};">${soonCount}</div>
       <div class="stat-sub">within 7 days</div>
     </div>`;
 
@@ -3246,21 +3294,18 @@ function renderSubscriptions(){
 
   // ── Group by household, sort by renewal ──
   const groups={};
-  subs.forEach(s=>{
-    const h=s.household||'Unassigned';
-    if(!groups[h]) groups[h]=[];
-    groups[h].push(s);
-  });
+  subs.forEach(s=>{ const h=s.household||'Unassigned'; if(!groups[h]) groups[h]=[]; groups[h].push(s); });
   Object.values(groups).forEach(g=>g.sort((a,b)=>(a.renewalDate||'').localeCompare(b.renewalDate||'')));
 
   listEl.innerHTML='';
   Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([household,items])=>{
-    const groupMonthly=items.filter(s=>s.status==='active').reduce((sum,s)=>sum+subMonthly(s.cost,s.cycle),0);
+    const groupMonthly=items.filter(s=>s.status==='active').reduce((sum,s)=>sum+subMonthly(s),0);
+    const groupVar=items.filter(s=>s.status==='active'&&s.variable).length;
     const wrap=document.createElement('div');
     wrap.className='sub-group';
     wrap.innerHTML=`<div class="sub-group-title">
       <span>${esc(household)}</span>
-      <span class="sub-group-cost">${fmt(groupMonthly)}/mo</span>
+      <span class="sub-group-cost">${fmt(groupMonthly)}/mo${groupVar?` + ${groupVar} variable`:''}</span>
     </div>`;
     items.forEach(s=>{
       const days=s.noRenewal?null:daysUntilRenewal(s.renewalDate);
@@ -3268,8 +3313,7 @@ function renderSubscriptions(){
       const renewalLbl=s.noRenewal?'No renewal':days===null?'—':days<0?'Overdue':days===0?'Today':days===1?'Tomorrow':`${days} days`;
       const renewalDate=s.noRenewal?'—':s.renewalDate?new Date(s.renewalDate+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
       const icon=SUB_CAT_ICONS[s.cat]||'🔮';
-      const row=document.createElement('div');
-      row.className='sub-row';
+      const row=document.createElement('div'); row.className='sub-row';
       row.style.opacity=s.status==='cancelled'?'0.45':'1';
       row.innerHTML=`
         <div class="sub-icon">${icon}</div>
@@ -3286,7 +3330,7 @@ function renderSubscriptions(){
           <div class="sub-renewal ${renewalCls}" style="font-size:10px;margin-top:2px;">${s.noRenewal?'':renewalLbl!==renewalDate?renewalLbl:''}</div>
         </div>
         <div class="sub-right" style="min-width:70px;">
-          <div class="sub-cost">${fmt(s.cost)}</div>
+          <div class="sub-cost" style="${s.variable?'color:var(--muted);font-style:italic;':''}">${subDisplayCost(s)}</div>
         </div>`;
       row.onclick=()=>openEditSubscription(s.id);
       wrap.appendChild(row);
@@ -3303,6 +3347,8 @@ function openAddSubscription(){
   $id('subName').value=''; $id('subCat').value='🎬 Streaming';
   $id('subHousehold').value=''; $id('subCost').value='';
   $id('subCycle').value='monthly';
+  $id('subVariable').checked=false;
+  $id('subFixedCostField').style.display='grid';
   $id('subRenewal').value=new Date().toISOString().slice(0,10);
   $id('subNoRenewal').checked=false;
   $id('subRenewalField').style.opacity='1'; $id('subRenewalField').style.pointerEvents='';
@@ -3318,8 +3364,11 @@ function openEditSubscription(id){
   $id('subModalTitle').textContent='Edit Subscription';
   $id('subDelBtn').style.display='';
   $id('subName').value=s.name||''; $id('subCat').value=s.cat||'🔮 Other';
-  $id('subHousehold').value=s.household||''; $id('subCost').value=s.cost||'';
+  $id('subHousehold').value=s.household||'';
+  $id('subVariable').checked=!!s.variable;
+  $id('subCost').value=s.variable?'':s.cost||'';
   $id('subCycle').value=s.cycle||'monthly';
+  $id('subFixedCostField').style.display=s.variable?'none':'grid';
   $id('subNoRenewal').checked=!!s.noRenewal;
   $id('subRenewal').value=s.renewalDate||'';
   $id('subRenewalField').style.opacity=s.noRenewal?'0.35':'1';
@@ -3327,6 +3376,11 @@ function openEditSubscription(id){
   $id('subStatus').value=s.status||'active'; $id('subNotes').value=s.notes||'';
   populateHouseholdList();
   $id('subOv').classList.add('on');
+}
+
+function toggleSubVariableCost(){
+  const isVar=$id('subVariable').checked;
+  $id('subFixedCostField').style.display=isVar?'none':'grid';
 }
 
 function toggleSubRenewalField(){
@@ -3345,14 +3399,18 @@ $id('subOv').addEventListener('click',e=>{ if(e.target===$id('subOv')) closeSubM
 
 function saveSubscription(){
   const name=$id('subName').value.trim();
-  const cost=parseFloat($id('subCost').value);
-  if(!name||isNaN(cost)||cost<0){ alert('Please enter a name and valid cost.'); return; }
+  const isVar=$id('subVariable').checked;
+  const cost=isVar?0:parseFloat($id('subCost').value);
+  if(!name){ alert('Please enter a name.'); return; }
+  if(!isVar&&(isNaN(cost)||cost<0)){ alert('Please enter a valid cost.'); return; }
   if(!D.subscriptions) D.subscriptions=[];
   const noRenewal=$id('subNoRenewal').checked;
   const entry={
     id:editingSubId||Date.now().toString(), name,
     cat:$id('subCat').value, household:$id('subHousehold').value.trim(),
-    cost, cycle:$id('subCycle').value,
+    variable:isVar||undefined,
+    cost:isVar?null:cost,
+    cycle:$id('subCycle').value,
     renewalDate:noRenewal?'':$id('subRenewal').value,
     noRenewal:noRenewal||undefined,
     status:$id('subStatus').value, notes:$id('subNotes').value.trim()
