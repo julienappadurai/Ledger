@@ -3686,7 +3686,7 @@ function biRenderMappingRules(){
     return;
   }
   const spCats=['🏠 Housing','🍔 Food','🚗 Transport','💡 Utilities','🛒 Shopping','🎮 Entertainment','💊 Health','🎓 Education','✈️ Holidays','👨‍👩‍👧 Family','💳 Debt Payments','📈 Investments','🔮 Other'];
-  const incCats=['💼 Income','📈 Investments','🔮 Other'];
+  const incCats=['💼 Income','💰 Salary Payment','📈 Investments','🔮 Other'];
   const allCats=[...new Set([...incCats,...spCats])];
   rules.forEach((rule,i)=>{
     const row=document.createElement('div');
@@ -3790,7 +3790,7 @@ function biRenderPreview(){
     ${dups?`<span style="color:var(--gold);">⚠ ${dups} possible duplicates</span>`:''}`;
 
   // Category options
-  const incCats=['💼 Income','📈 Investments','🔮 Other'];
+  const incCats=['💼 Income','💰 Salary Payment','📈 Investments','🔮 Other'];
   const spCats=['🏠 Housing','🍔 Food','🚗 Transport','💡 Utilities','🛒 Shopping','🎮 Entertainment','💊 Health','🎓 Education','✈️ Holidays','👨‍👩‍👧 Family','💳 Debt Payments','📈 Investments','🔮 Other'];
 
   const tbody=$id('biPreviewBody');
