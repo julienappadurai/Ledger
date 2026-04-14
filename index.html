@@ -3480,17 +3480,26 @@ function biHandleDrop(e){
 function biHandleFile(file){
   if(!file){ return; }
   $id('biFileStatus').textContent='Reading '+file.name+'…';
+  // Read as ArrayBuffer then decode — handles iso-8859-1 correctly
   const reader=new FileReader();
   reader.onload=function(e){
+    let content;
     try{
-      biParsedRows=biParseFile(e.target.result, biCurrentBank);
+      // Try iso-8859-1 first (Santander's actual encoding)
+      content=new TextDecoder('iso-8859-1').decode(e.target.result);
+    } catch(err){
+      content=new TextDecoder('utf-8').decode(e.target.result);
+    }
+    try{
+      biParsedRows=biParseFile(content, biCurrentBank);
       $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${file.name} — ${biParsedRows.length} transactions found</span>`;
       $id('biStep2Next').style.display='';
     } catch(err){
-      $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Error: ${esc(err.message)}</span>`;
+      $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err.message)}</span>`;
     }
   };
-  reader.readAsText(file, 'utf-8');
+  reader.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
+  reader.readAsArrayBuffer(file);
 }
 
 async function biPickFromDrive(){
@@ -3549,22 +3558,20 @@ function biParseFile(content, bank){
 }
 
 function biParseSantanderHTML(html, config){
-  // Parse HTML table
-  const rows=[];
-  const parser=new DOMParser();
-  const doc=parser.parseFromString(html,'text/html');
-  doc.querySelectorAll('tr').forEach(tr=>{
-    const cells=[...tr.querySelectorAll('td,th')].map(td=>td.textContent.trim());
-    rows.push(cells);
-  });
-  if(rows.length<6) throw new Error('File appears empty or in wrong format');
+  // Parse using DOMParser — correctly handles nested <font> tags
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const trs=[...doc.querySelectorAll('tr')];
+  if(trs.length<6) throw new Error('File appears empty or in wrong format ('+trs.length+' rows found — expected at least 6)');
+
+  // Extract cell text — textContent handles nested tags correctly
+  const rows=trs.map(tr=>[...tr.querySelectorAll('td,th')].map(td=>td.textContent.replace(/\s+/g,' ').trim()));
 
   const cols=config.columns;
   const transactions=[];
 
   for(let i=config.dataStartRow; i<rows.length; i++){
     const row=rows[i];
-    if(!row||row.length<=cols.balance.index) continue;
+    if(!row||row.length<=cols.moneyOut.index) continue;
     const dateRaw  = row[cols.date.index]||'';
     const desc     = row[cols.desc.index]||'';
     const moneyIn  = row[cols.moneyIn.index]||'';
@@ -3582,7 +3589,7 @@ function biParseSantanderHTML(html, config){
       transactions.push({type:'spending', date, desc, amount:amtOut, cat:'🔮 Other', include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
     }
   }
-  if(!transactions.length) throw new Error('No transactions found — check this is a Santander statement');
+  if(!transactions.length) throw new Error('No transactions found — please check this is a Santander statement export');
   return transactions;
 }
 
