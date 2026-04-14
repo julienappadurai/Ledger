@@ -369,6 +369,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
       <button class="hbtn nav-btn" id="navNetWorth" onclick="showView('networth')">◈ Net Worth</button>
+      <button class="hbtn nav-btn" id="navTransactions" onclick="showView('transactions')">≡ Transactions</button>
       <button class="hbtn" onclick="openBankImport()">🏦 Bank Import</button>
       <button class="hbtn" onclick="openXlsxImport()">⬆ Import Excel</button>
       <button class="hbtn" onclick="exportToExcel()">⬇ Export Data</button>
@@ -386,6 +387,61 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     </div>
     <div class="sub-summary" id="subSummary"></div>
     <div id="subList"></div>
+  </div>
+
+  <!-- TRANSACTIONS VIEW -->
+  <div id="viewTransactions" style="display:none;">
+    <!-- Filters -->
+    <div style="background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div class="field" style="margin-bottom:0;grid-column:1/-1;">
+          <label>Search description</label>
+          <input id="txSearchDesc" placeholder="e.g. Trading 212, AMEX…" oninput="renderTransactions()" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>From date</label>
+          <input type="date" id="txSearchFrom" onchange="renderTransactions()" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>To date</label>
+          <input type="date" id="txSearchTo" onchange="renderTransactions()" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Category</label>
+          <select id="txSearchCat" onchange="renderTransactions()" style="width:100%;box-sizing:border-box;">
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Type</label>
+          <select id="txSearchType" onchange="renderTransactions()" style="width:100%;box-sizing:border-box;">
+            <option value="all">Income & Spending</option>
+            <option value="income">Income only</option>
+            <option value="spending">Spending only</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div id="txResultCount" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);"></div>
+        <button onclick="txClearFilters()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-family:'DM Mono',monospace;padding:5px 12px;cursor:pointer;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">Clear filters</button>
+      </div>
+    </div>
+    <!-- Results -->
+    <div id="txResultsWrap" style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;">
+      <table class="year-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th onclick="txSort('date')" style="cursor:pointer;user-select:none;" id="txThDate">Date <span id="txSortDate"></span></th>
+            <th>Description</th>
+            <th>Category</th>
+            <th style="text-align:right;" onclick="txSort('amt')" style="cursor:pointer;user-select:none;" id="txThAmt">Amount <span id="txSortAmt"></span></th>
+            <th style="text-align:center;">Type</th>
+          </tr>
+        </thead>
+        <tbody id="txResultsBody"></tbody>
+      </table>
+    </div>
+    <div id="txEmpty" style="display:none;text-align:center;padding:32px;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);">No transactions match your filters</div>
   </div>
 
   <!-- INVESTMENT TRACKER VIEW -->
@@ -2563,24 +2619,26 @@ function getEffectiveEntries(k, type){
 // VIEW SWITCHING
 // ═══════════════════════════════════════════════
 function showView(view){
-  const savingsViews=['dashboard','recurring','networth'];
+  const savingsViews=['dashboard','recurring','networth','transactions'];
   const isSavings=savingsViews.includes(view);
   $id('viewDashboard').style.display     = view==='dashboard'     ? '' : 'none';
   $id('viewRecurring').style.display     = view==='recurring'     ? '' : 'none';
   $id('viewNetWorth').style.display      = view==='networth'      ? '' : 'none';
+  $id('viewTransactions').style.display  = view==='transactions'  ? '' : 'none';
   $id('viewSubscriptions').style.display = view==='subscriptions' ? '' : 'none';
   $id('viewInvestments').style.display   = view==='investments'   ? '' : 'none';
-  // Show/hide savings nav buttons based on mode
-  ['navDashboard','navRecurring','navNetWorth'].forEach(id=>{
+  ['navDashboard','navRecurring','navNetWorth','navTransactions'].forEach(id=>{
     $id(id).style.display = isSavings ? '' : 'none';
   });
-  $id('navDashboard').classList.toggle('on', view==='dashboard');
-  $id('navRecurring').classList.toggle('on', view==='recurring');
-  $id('navNetWorth').classList.toggle('on',  view==='networth');
-  if(view==='recurring')     renderTimeline();
-  if(view==='networth')      renderNetWorth();
+  $id('navDashboard').classList.toggle('on',    view==='dashboard');
+  $id('navRecurring').classList.toggle('on',    view==='recurring');
+  $id('navNetWorth').classList.toggle('on',     view==='networth');
+  $id('navTransactions').classList.toggle('on', view==='transactions');
+  if(view==='recurring')    renderTimeline();
+  if(view==='networth')     renderNetWorth();
   if(view==='subscriptions') renderSubscriptions();
-  if(view==='investments')   renderInvestments();
+  if(view==='investments')  renderInvestments();
+  if(view==='transactions') initTransactions();
 }
 
 // ── MODE DROPDOWN ──
@@ -3433,8 +3491,145 @@ function exportToExcel(){
 }
 
 // ═══════════════════════════════════════════════
-// BANK IMPORT
+// TRANSACTIONS VIEW
 // ═══════════════════════════════════════════════
+let txSortCol   = 'date';
+let txSortDir   = 'desc';  // 'asc' or 'desc'
+
+function getAllTransactions(){
+  const txns=[];
+  Object.entries(D.months||{}).forEach(([month,data])=>{
+    (data.income||[]).forEach(e=>txns.push({...e,type:'income',month}));
+    (data.spending||[]).forEach(e=>txns.push({...e,type:'spending',month}));
+  });
+  // Also include generated recurring entries
+  const allMonths=[...new Set([
+    ...Object.keys(D.months||{}),
+    ...Array.from({length:13},(_,i)=>{ const d=new Date(); d.setMonth(d.getMonth()-6+i); return key(d); })
+  ])].sort();
+  allMonths.forEach(month=>{
+    ['income','spending'].forEach(type=>{
+      getEffectiveEntries(month,type).filter(e=>e.generated).forEach(e=>{
+        txns.push({...e,type,month});
+      });
+    });
+  });
+  return txns;
+}
+
+function filterTransactions(txns){
+  const desc=($id('txSearchDesc').value||'').toLowerCase().trim();
+  const from=$id('txSearchFrom').value||'';
+  const to=$id('txSearchTo').value||'';
+  const cat=$id('txSearchCat').value||'';
+  const type=$id('txSearchType').value||'all';
+  return txns.filter(t=>{
+    if(desc && !(t.src||'').toLowerCase().includes(desc)) return false;
+    if(from && (t.date||'')<from) return false;
+    if(to   && (t.date||'')>to)  return false;
+    if(cat  && t.cat!==cat)      return false;
+    if(type!=='all' && t.type!==type) return false;
+    return true;
+  });
+}
+
+function txSort(col){
+  if(txSortCol===col) txSortDir=txSortDir==='asc'?'desc':'asc';
+  else { txSortCol=col; txSortDir='desc'; }
+  renderTransactions();
+}
+
+function txClearFilters(){
+  $id('txSearchDesc').value='';
+  $id('txSearchFrom').value='';
+  $id('txSearchTo').value='';
+  $id('txSearchCat').value='';
+  $id('txSearchType').value='all';
+  renderTransactions();
+}
+
+function initTransactions(){
+  // Populate category dropdown with all categories found in data
+  const cats=new Set();
+  Object.values(D.months||{}).forEach(data=>{
+    (data.income||[]).forEach(e=>{ if(e.cat) cats.add(e.cat); });
+    (data.spending||[]).forEach(e=>{ if(e.cat) cats.add(e.cat); });
+  });
+  (D.templates||[]).forEach(t=>{ if(t.cat) cats.add(t.cat); });
+  const catSel=$id('txSearchCat');
+  const currentCat=catSel.value;
+  catSel.innerHTML='<option value="">All categories</option>';
+  [...cats].sort().forEach(c=>{
+    const opt=document.createElement('option');
+    opt.value=c; opt.textContent=c;
+    if(c===currentCat) opt.selected=true;
+    catSel.appendChild(opt);
+  });
+  renderTransactions();
+}
+
+function renderTransactions(){
+  const all=getAllTransactions();
+  const filtered=filterTransactions(all);
+
+  // Sort
+  filtered.sort((a,b)=>{
+    let va=a[txSortCol==='amt'?'amt':'date']||'';
+    let vb=b[txSortCol==='amt'?'amt':'date']||'';
+    if(txSortCol==='amt'){ va=parseFloat(va)||0; vb=parseFloat(vb)||0; }
+    const cmp=va<vb?-1:va>vb?1:0;
+    return txSortDir==='asc'?cmp:-cmp;
+  });
+
+  // Sort indicators
+  ['date','amt'].forEach(col=>{
+    const el=$id('txSort'+( col==='date'?'Date':'Amt'));
+    if(el) el.textContent=txSortCol===col?(txSortDir==='asc'?'↑':'↓'):'';
+  });
+
+  // Summary
+  const totalInc=filtered.filter(t=>t.type==='income'&&!t.exclude).reduce((s,t)=>s+t.amt,0);
+  const totalSp =filtered.filter(t=>t.type==='spending'&&!t.exclude).reduce((s,t)=>s+t.amt,0);
+  $id('txResultCount').innerHTML=
+    `${filtered.length} transaction${filtered.length!==1?'s':''}`+
+    (filtered.length?` &nbsp;·&nbsp; <span style="color:var(--green);">+${fmt(totalInc)}</span> &nbsp;·&nbsp; <span style="color:var(--red);">-${fmt(totalSp)}</span>`:'');
+
+  const tbody=$id('txResultsBody');
+  const empty=$id('txEmpty');
+  const wrap=$id('txResultsWrap');
+
+  if(!filtered.length){
+    wrap.style.display='none'; empty.style.display='';
+    return;
+  }
+  wrap.style.display=''; empty.style.display='none';
+  tbody.innerHTML='';
+
+  filtered.forEach(t=>{
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    tr.style.opacity=t.exclude?'0.5':'1';
+    const dateStr=t.date?new Date(t.date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+    const isInc=t.type==='income';
+    const exclBadge=t.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:4px;font-family:DM Mono,monospace;">excl</span>':'';
+    const recurBadge=t.generated||t.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;">↻</span>':'';
+    tr.innerHTML=`
+      <td style="white-space:nowrap;font-family:'DM Mono',monospace;font-size:11px;">${dateStr}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.src||'')}${recurBadge}${exclBadge}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap;">${esc(t.cat||'')}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;color:${t.exclude?'var(--muted)':isInc?'var(--green)':'var(--red)'};">${isInc?'+':'-'}${fmt(t.amt)}</td>
+      <td style="text-align:center;">
+        <span style="font-size:9px;padding:2px 6px;border-radius:4px;font-family:'DM Mono',monospace;background:${isInc?'rgba(76,175,125,.15)':'rgba(224,92,92,.12)'};color:${isInc?'var(--green)':'var(--red)'};">${t.type}</span>
+      </td>`;
+    tr.onmouseover=()=>tr.style.background='var(--s2)';
+    tr.onmouseout=()=>tr.style.background='';
+    tr.onclick=()=>{
+      if(t.type==='income') editIncome(t.id);
+      else editCat(t.id);
+    };
+    tbody.appendChild(tr);
+  });
+}
 let biCurrentBank    = 'santander';
 let biParsedRows     = [];   // raw parsed transactions
 let biCurrentStep    = 1;
