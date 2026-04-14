@@ -3432,8 +3432,8 @@ const BANK_CONFIGS = {
   santander: {
     name: 'Santander',
     fileType: 'xls-html',  // HTML disguised as XLS
-    skipRows: 4,           // skip rows 0-3 (0-based), header is row 3
-    dataStartRow: 5,       // data starts at row 5 (0-based)
+    skipRows: 2,           // skip title and account rows
+    dataStartRow: 3,       // data starts at row index 3 (after title, account, header)
     columns: {
       date:     { index:1, label:'Date',        ledgerField:'Date' },
       desc:     { index:3, label:'Description', ledgerField:'Description (used as Source)' },
@@ -3480,16 +3480,11 @@ function biHandleDrop(e){
 function biHandleFile(file){
   if(!file){ return; }
   $id('biFileStatus').textContent='Reading '+file.name+'…';
-  // Read as ArrayBuffer then decode — handles iso-8859-1 correctly
   const reader=new FileReader();
   reader.onload=function(e){
     let content;
-    try{
-      // Try iso-8859-1 first (Santander's actual encoding)
-      content=new TextDecoder('iso-8859-1').decode(e.target.result);
-    } catch(err){
-      content=new TextDecoder('utf-8').decode(e.target.result);
-    }
+    try{ content=new TextDecoder('iso-8859-1').decode(e.target.result); }
+    catch(err){ content=new TextDecoder('utf-8').decode(e.target.result); }
     try{
       biParsedRows=biParseFile(content, biCurrentBank);
       $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${file.name} — ${biParsedRows.length} transactions found</span>`;
@@ -3500,6 +3495,26 @@ function biHandleFile(file){
   };
   reader.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
   reader.readAsArrayBuffer(file);
+}
+
+async function biPickFromDrive(){
+  if(!driveReady||!folderId){ alert('Connect to Google Drive first (wait for sync to complete).'); return; }
+  $id('biFileStatus').textContent='Searching Drive…';
+  try{
+    const r=await gapi.client.drive.files.list({
+      q:`(mimeType='application/vnd.ms-excel' or name contains '.xls') and trashed=false`,
+      fields:'files(id,name,mimeType)',spaces:'drive',pageSize:20
+    });
+    const files=r.result.files||[];
+    if(!files.length){ $id('biFileStatus').textContent='No XLS files found in Drive.'; return; }
+    const chosen=await biShowDrivePicker(files);
+    if(!chosen) return;
+    $id('biFileStatus').textContent='Downloading '+chosen.name+'…';
+    const res=await gapi.client.drive.files.get({fileId:chosen.id,alt:'media'});
+    biParsedRows=biParseFile(res.body, biCurrentBank);
+    $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${chosen.name} — ${biParsedRows.length} transactions found</span>`;
+    $id('biStep2Next').style.display='';
+  } catch(e){ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(String(e))}</span>`; }
 }
 
 async function biPickFromDrive(){
@@ -3558,37 +3573,64 @@ function biParseFile(content, bank){
 }
 
 function biParseSantanderHTML(html, config){
-  // Parse using DOMParser — correctly handles nested <font> tags
-  const doc=new DOMParser().parseFromString(html,'text/html');
-  const trs=[...doc.querySelectorAll('tr')];
-  if(trs.length<6) throw new Error('File appears empty or in wrong format ('+trs.length+' rows found — expected at least 6)');
+  // Mobile-safe parser — no DOMParser, pure string splitting
+  // Splits on </tr> boundaries, extracts TD text content
+  const trParts = html.split(/<\/tr>/i);
+  const allRows = [];
+  trParts.forEach(part => {
+    const cells = [];
+    // Split on <td...> — handles both <td> and <td style="...">
+    const tdParts = part.split(/<td[^>]*>/i);
+    for(let j=1; j<tdParts.length; j++){
+      // Strip all HTML tags, decode entities, collapse whitespace
+      let text = tdParts[j]
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#\d+;/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      // Remove trailing </td content if present
+      const closeIdx = text.search(/<\/td/i);
+      if(closeIdx !== -1) text = text.slice(0, closeIdx).trim();
+      cells.push(text);
+    }
+    if(cells.some(c => c.length > 0)) allRows.push(cells);
+  });
 
-  // Extract cell text — textContent handles nested tags correctly
-  const rows=trs.map(tr=>[...tr.querySelectorAll('td,th')].map(td=>td.textContent.replace(/\s+/g,' ').trim()));
+  if(allRows.length < 4) throw new Error('File appears empty or in wrong format ('+allRows.length+' rows found)');
 
-  const cols=config.columns;
-  const transactions=[];
+  // Santander structure (0-based on allRows):
+  // Row 0: "Transactions" title
+  // Row 1: Account number + date range
+  // Row 2: Headers — Date[1], Description[3], Money in[5], Money Out[6], Balance[7]
+  // Row 3+: Transaction data
+  const cols = config.columns;
+  const transactions = [];
 
-  for(let i=config.dataStartRow; i<rows.length; i++){
-    const row=rows[i];
-    if(!row||row.length<=cols.moneyOut.index) continue;
-    const dateRaw  = row[cols.date.index]||'';
-    const desc     = row[cols.desc.index]||'';
-    const moneyIn  = row[cols.moneyIn.index]||'';
-    const moneyOut = row[cols.moneyOut.index]||'';
+  for(let i=3; i<allRows.length; i++){
+    const row = allRows[i];
+    if(!row || row.length <= cols.moneyOut.index) continue;
+    const dateRaw  = row[cols.date.index]    || '';
+    const desc     = row[cols.desc.index]    || '';
+    const moneyIn  = row[cols.moneyIn.index] || '';
+    const moneyOut = row[cols.moneyOut.index]|| '';
 
-    const date=biParseDate(dateRaw);
-    if(!date) continue; // blank/separator row
+    const date = biParseDate(dateRaw);
+    if(!date) continue;
 
     const amtIn  = biParseAmount(moneyIn);
     const amtOut = biParseAmount(moneyOut);
 
-    if(amtIn!==null&&amtIn>0){
-      transactions.push({type:'income', date, desc, amount:amtIn, cat:'💼 Income', include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
-    } else if(amtOut!==null&&amtOut>0){
-      transactions.push({type:'spending', date, desc, amount:amtOut, cat:'🔮 Other', include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
+    if(amtIn !== null && amtIn > 0){
+      transactions.push({type:'income',  date, desc, amount:amtIn,  cat:'💼 Income', include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
+    } else if(amtOut !== null && amtOut > 0){
+      transactions.push({type:'spending', date, desc, amount:amtOut, cat:'🔮 Other',  include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
     }
   }
+
   if(!transactions.length) throw new Error('No transactions found — please check this is a Santander statement export');
   return transactions;
 }
