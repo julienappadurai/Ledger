@@ -84,7 +84,36 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .mode-option-check{color:var(--gold);font-size:12px;opacity:0;}
 .mode-option.active .mode-option-check{opacity:1;}
 
-/* ── SUBSCRIPTION TRACKER ── */
+/* ── BANK IMPORT ── */
+.bank-step{display:none;}.bank-step.on{display:block;}
+.bank-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.bank-card{background:var(--s2);border:2px solid var(--border);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all .15s;}
+.bank-card:hover,.bank-card.on{border-color:var(--gold);background:rgba(201,168,76,.07);}
+.bank-card-icon{font-size:28px;margin-bottom:8px;}
+.bank-card-name{font-size:12px;font-family:'DM Mono',monospace;color:var(--text);}
+.bi-upload-zone{border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:all .15s;margin-bottom:12px;}
+.bi-upload-zone:hover,.bi-upload-zone.over{border-color:var(--gold);background:rgba(201,168,76,.05);}
+.bi-upload-icon{font-size:28px;margin-bottom:8px;}
+.bi-upload-label{font-size:13px;color:var(--muted);}
+.bi-mapping-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;}
+.bi-mapping-table th{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:6px 10px;border-bottom:1px solid var(--border);text-align:left;}
+.bi-mapping-table td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.bi-mapping-table tr:last-child td{border-bottom:none;}
+.bi-arrow{color:var(--gold);font-size:14px;text-align:center;}
+.bi-preview-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;font-family:'DM Mono',monospace;}
+.bi-preview-table th{padding:5px 8px;border-bottom:1px solid var(--border);color:var(--muted);text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;}
+.bi-preview-table td{padding:5px 8px;border-bottom:1px solid var(--border);}
+.bi-preview-table tr.income td{color:var(--green);}
+.bi-preview-table tr.spending td{color:var(--red);}
+.bi-preview-table tr.duplicate{opacity:.55;}
+.bi-preview-table tr.duplicate td:first-child::before{content:'⚠ ';color:var(--gold);}
+.bi-badge{display:inline-block;font-family:'DM Mono',monospace;font-size:9px;padding:2px 6px;border-radius:4px;text-transform:uppercase;margin-left:4px;}
+.bi-badge.income{background:rgba(76,175,125,.15);color:var(--green);}
+.bi-badge.spending{background:rgba(224,92,92,.12);color:var(--red);}
+.bi-badge.duplicate{background:rgba(201,168,76,.15);color:var(--gold);}
+.bi-summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:12px;font-family:'DM Mono',monospace;color:var(--muted);}
+.bi-summary span{padding:4px 10px;border-radius:6px;background:var(--s2);}
+.bi-example-row{background:rgba(201,168,76,.05);font-size:10px;font-style:italic;}
 .sub-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
 @media(max-width:500px){.sub-summary{grid-template-columns:1fr 1fr;}}
 .sub-group{margin-bottom:24px;}
@@ -340,6 +369,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button class="hbtn nav-btn on" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="hbtn nav-btn" id="navRecurring" onclick="showView('recurring')">↻ Recurring</button>
       <button class="hbtn nav-btn" id="navNetWorth" onclick="showView('networth')">◈ Net Worth</button>
+      <button class="hbtn" onclick="openBankImport()">🏦 Bank Import</button>
       <button class="hbtn" onclick="openXlsxImport()">⬆ Import Excel</button>
       <button class="hbtn" onclick="exportToExcel()">⬇ Export Data</button>
       <button class="hbtn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀</button>
@@ -535,6 +565,104 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button class="mbtn-d" id="invSnapDelBtn" style="display:none;" onclick="deleteInvSnapshot()">Delete</button>
       <button class="mbtn-p" onclick="saveInvSnapshot()">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- BANK IMPORT MODAL -->
+<div class="ov" id="bankImportOv">
+  <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto;">
+    <h2 id="bankImportTitle">Bank Import</h2>
+
+    <!-- Step 1: Select bank -->
+    <div class="bank-step on" id="biStep1">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;">Select your bank</div>
+      <div class="bank-grid">
+        <div class="bank-card on" id="bankCardSantander" onclick="selectBank('santander')">
+          <div class="bank-card-icon">🏦</div>
+          <div class="bank-card-name">Santander</div>
+        </div>
+        <div class="bank-card" style="opacity:.4;cursor:not-allowed;" title="Coming soon">
+          <div class="bank-card-icon">🏛️</div>
+          <div class="bank-card-name">Barclays<br><span style="font-size:9px;color:var(--muted);">Coming soon</span></div>
+        </div>
+        <div class="bank-card" style="opacity:.4;cursor:not-allowed;" title="Coming soon">
+          <div class="bank-card-icon">🏴󠁧󠁢󠁥󠁮󠁧󠁿</div>
+          <div class="bank-card-name">HSBC<br><span style="font-size:9px;color:var(--muted);">Coming soon</span></div>
+        </div>
+      </div>
+      <div class="mbtns">
+        <button class="mbtn-g" onclick="closeBankImport()">Cancel</button>
+        <button class="mbtn-p" onclick="biGoStep(2)">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Upload file -->
+    <div class="bank-step" id="biStep2">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;">Upload <span id="biStepBankLabel">Santander</span> statement</div>
+      <div class="bi-upload-zone" id="biDropZone" onclick="$id('biFi').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="biHandleDrop(event)">
+        <div class="bi-upload-icon">📂</div>
+        <div class="bi-upload-label">Tap to choose file from device<br><span style="font-size:11px;">or drag and drop</span></div>
+      </div>
+      <input type="file" id="biFi" accept=".xls,.xlsx" style="display:none;" onchange="biHandleFile(this.files[0])">
+      <div style="text-align:center;margin:10px 0;font-size:12px;color:var(--muted);">— or —</div>
+      <button class="hbtn" style="width:100%;justify-content:center;display:flex;gap:8px;" onclick="biPickFromDrive()">
+        <span>📁</span> Choose from Google Drive
+      </button>
+      <div id="biFileStatus" style="margin-top:12px;font-size:12px;color:var(--muted);text-align:center;"></div>
+      <div class="mbtns" style="margin-top:16px;">
+        <button class="mbtn-g" onclick="biGoStep(1)">← Back</button>
+        <button class="mbtn-p" id="biStep2Next" onclick="biGoStep(3)" style="display:none;">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Column mapping + preview -->
+    <div class="bank-step" id="biStep3">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;">Column Mapping</div>
+      <table class="bi-mapping-table">
+        <thead>
+          <tr>
+            <th>Bank column</th>
+            <th style="text-align:center;">→</th>
+            <th>Ledger field</th>
+            <th>Example values</th>
+          </tr>
+        </thead>
+        <tbody id="biMappingBody"></tbody>
+      </table>
+      <div class="mbtns">
+        <button class="mbtn-g" onclick="biGoStep(2)">← Back</button>
+        <button class="mbtn-p" onclick="biGoStep(4)">Preview transactions →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Transaction preview & review -->
+    <div class="bank-step" id="biStep4">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Review Transactions</div>
+      <div class="bi-summary" id="biSummaryBar"></div>
+      <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+        <table class="bi-preview-table">
+          <thead>
+            <tr>
+              <th style="width:24px;"></th>
+              <th>Date</th>
+              <th>Description</th>
+              <th style="text-align:right;">Amount</th>
+              <th>Type</th>
+              <th>Category</th>
+            </tr>
+          </thead>
+          <tbody id="biPreviewBody"></tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+        ⚠ flagged rows are potential duplicates — uncheck to skip them
+      </div>
+      <div class="mbtns" style="margin-top:16px;">
+        <button class="mbtn-g" onclick="biGoStep(3)">← Back</button>
+        <button class="mbtn-p" onclick="biConfirmImport()">✓ Import selected</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -3245,8 +3373,281 @@ function exportToExcel(){
 }
 
 // ═══════════════════════════════════════════════
-// SUBSCRIPTION TRACKER
+// BANK IMPORT
 // ═══════════════════════════════════════════════
+let biCurrentBank    = 'santander';
+let biParsedRows     = [];   // raw parsed transactions
+let biCurrentStep    = 1;
+
+// Bank definitions — extensible for future banks
+const BANK_CONFIGS = {
+  santander: {
+    name: 'Santander',
+    fileType: 'xls-html',  // HTML disguised as XLS
+    skipRows: 4,           // skip rows 0-3 (0-based), header is row 3
+    dataStartRow: 5,       // data starts at row 5 (0-based)
+    columns: {
+      date:     { index:1, label:'Date',        ledgerField:'Date' },
+      desc:     { index:3, label:'Description', ledgerField:'Description (used as Source)' },
+      moneyIn:  { index:5, label:'Money in',    ledgerField:'Amount (Income)' },
+      moneyOut: { index:6, label:'Money Out',   ledgerField:'Amount (Spending)' },
+      balance:  { index:7, label:'Balance',     ledgerField:'(not imported)' },
+    }
+  }
+};
+
+// ── MODAL OPEN/CLOSE ──
+function openBankImport(){
+  biCurrentStep=1; biParsedRows=[];
+  biGoStep(1);
+  $id('bankImportOv').classList.add('on');
+}
+function closeBankImport(){ $id('bankImportOv').classList.remove('on'); }
+$id('bankImportOv').addEventListener('click',e=>{ if(e.target===$id('bankImportOv')) closeBankImport(); });
+
+function biGoStep(n){
+  biCurrentStep=n;
+  document.querySelectorAll('.bank-step').forEach(s=>s.classList.remove('on'));
+  $id('biStep'+n).classList.add('on');
+  $id('bankImportTitle').textContent = ['','Select Bank','Upload File','Column Mapping','Review & Import'][n]||'Bank Import';
+  if(n===3) biRenderMapping();
+  if(n===4) biRenderPreview();
+}
+
+function selectBank(bank){
+  biCurrentBank=bank;
+  document.querySelectorAll('.bank-card').forEach(c=>c.classList.remove('on'));
+  $id('bankCard'+bank.charAt(0).toUpperCase()+bank.slice(1)).classList.add('on');
+  $id('biStepBankLabel').textContent=BANK_CONFIGS[bank].name;
+}
+
+// ── FILE HANDLING ──
+function biHandleDrop(e){
+  e.preventDefault();
+  $id('biDropZone').classList.remove('over');
+  if(e.dataTransfer.files[0]) biHandleFile(e.dataTransfer.files[0]);
+}
+
+function biHandleFile(file){
+  if(!file){ return; }
+  $id('biFileStatus').textContent='Reading '+file.name+'…';
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      biParsedRows=biParseFile(e.target.result, biCurrentBank);
+      $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${file.name} — ${biParsedRows.length} transactions found</span>`;
+      $id('biStep2Next').style.display='';
+    } catch(err){
+      $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Error: ${esc(err.message)}</span>`;
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+async function biPickFromDrive(){
+  if(!driveReady||!folderId){ alert('Connect to Google Drive first (wait for sync to complete).'); return; }
+  // List XLS files from Drive root and Finance Tracker folder
+  $id('biFileStatus').textContent='Searching Drive…';
+  try{
+    const r=await gapi.client.drive.files.list({
+      q:`(mimeType='application/vnd.ms-excel' or name contains '.xls') and trashed=false`,
+      fields:'files(id,name,mimeType)',spaces:'drive',pageSize:20
+    });
+    const files=r.result.files||[];
+    if(!files.length){ $id('biFileStatus').textContent='No XLS files found in Drive.'; return; }
+    // Show simple picker
+    const chosen=await biShowDrivePicker(files);
+    if(!chosen) return;
+    $id('biFileStatus').textContent='Downloading '+chosen.name+'…';
+    const res=await gapi.client.drive.files.get({fileId:chosen.id,alt:'media'});
+    biParsedRows=biParseFile(res.body, biCurrentBank);
+    $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${chosen.name} — ${biParsedRows.length} transactions found</span>`;
+    $id('biStep2Next').style.display='';
+  } catch(e){ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(String(e))}</span>`; }
+}
+
+function biShowDrivePicker(files){
+  return new Promise(resolve=>{
+    // Build a simple modal list
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;display:flex;align-items:center;justify-content:center;';
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:400px;width:100%;max-height:60vh;overflow-y:auto;';
+    box.innerHTML=`<div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;">Choose file from Drive</div>`
+      +files.map(f=>`<div onclick="this.closest('[data-picker]').dataset.chosen='${f.id}|${esc(f.name)}'" style="padding:10px 12px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid var(--border);margin-bottom:8px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">📄 ${esc(f.name)}</div>`).join('')
+      +`<div style="margin-top:12px;text-align:right;"><button onclick="this.closest('[data-picker]').dataset.chosen='cancel'" style="background:none;border:1px solid var(--border);color:var(--muted);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button></div>`;
+    overlay.setAttribute('data-picker','');
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    // Poll for selection
+    const poll=setInterval(()=>{
+      const chosen=overlay.dataset.chosen;
+      if(!chosen) return;
+      clearInterval(poll);
+      document.body.removeChild(overlay);
+      if(chosen==='cancel'){ resolve(null); return; }
+      const[id,...nameParts]=chosen.split('|');
+      resolve({id,name:nameParts.join('|')});
+    },100);
+  });
+}
+
+// ── PARSER ──
+function biParseFile(content, bank){
+  const config=BANK_CONFIGS[bank];
+  if(config.fileType==='xls-html') return biParseSantanderHTML(content, config);
+  throw new Error('Unknown file type: '+config.fileType);
+}
+
+function biParseSantanderHTML(html, config){
+  // Parse HTML table
+  const rows=[];
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(html,'text/html');
+  doc.querySelectorAll('tr').forEach(tr=>{
+    const cells=[...tr.querySelectorAll('td,th')].map(td=>td.textContent.trim());
+    rows.push(cells);
+  });
+  if(rows.length<6) throw new Error('File appears empty or in wrong format');
+
+  const cols=config.columns;
+  const transactions=[];
+
+  for(let i=config.dataStartRow; i<rows.length; i++){
+    const row=rows[i];
+    if(!row||row.length<=cols.balance.index) continue;
+    const dateRaw  = row[cols.date.index]||'';
+    const desc     = row[cols.desc.index]||'';
+    const moneyIn  = row[cols.moneyIn.index]||'';
+    const moneyOut = row[cols.moneyOut.index]||'';
+
+    const date=biParseDate(dateRaw);
+    if(!date) continue; // blank/separator row
+
+    const amtIn  = biParseAmount(moneyIn);
+    const amtOut = biParseAmount(moneyOut);
+
+    if(amtIn!==null&&amtIn>0){
+      transactions.push({type:'income', date, desc, amount:amtIn, cat:'💼 Income', include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
+    } else if(amtOut!==null&&amtOut>0){
+      transactions.push({type:'spending', date, desc, amount:amtOut, cat:'🔮 Other', include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
+    }
+  }
+  if(!transactions.length) throw new Error('No transactions found — check this is a Santander statement');
+  return transactions;
+}
+
+function biParseDate(val){
+  if(!val) return null;
+  const m=val.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return null;
+}
+
+function biParseAmount(val){
+  if(!val||!val.trim()) return null;
+  const cleaned=val.replace(/[^\d.]/g,'');
+  const n=parseFloat(cleaned);
+  return isNaN(n)?null:n;
+}
+
+// ── MAPPING RENDER ──
+function biRenderMapping(){
+  const config=BANK_CONFIGS[biCurrentBank];
+  const cols=config.columns;
+  // Get first 3 data rows as examples
+  const examples=biParsedRows.slice(0,3);
+  const tbody=$id('biMappingBody');
+  tbody.innerHTML='';
+
+  const mappings=[
+    {col:cols.date,    examples:examples.map(e=>e.date)},
+    {col:cols.desc,    examples:examples.map(e=>e.desc.slice(0,35)+(e.desc.length>35?'…':''))},
+    {col:cols.moneyIn, examples:examples.map(e=>e.type==='income'?'£'+e.amount.toFixed(2):'—')},
+    {col:cols.moneyOut,examples:examples.map(e=>e.type==='spending'?'£'+e.amount.toFixed(2):'—')},
+    {col:cols.balance, examples:['(skipped)','(skipped)','(skipped)']},
+  ];
+
+  mappings.forEach(m=>{
+    const isSkipped=m.col.ledgerField.includes('not imported');
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td style="font-family:'DM Mono',monospace;font-weight:500;">${esc(m.col.label)}</td>
+      <td class="bi-arrow" style="text-align:center;">→</td>
+      <td style="color:${isSkipped?'var(--muted)':'var(--text)'};">${esc(m.col.ledgerField)}</td>
+      <td>
+        ${m.examples.map(ex=>`<div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:2px;">${esc(ex||'—')}</div>`).join('')}
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── PREVIEW RENDER ──
+function biRenderPreview(){
+  // Mark duplicates against existing data
+  biParsedRows.forEach(t=>{
+    const month=t.date.slice(0,7);
+    const existing=getEffectiveEntries(month, t.type);
+    t.duplicate=existing.some(e=>e.date===t.date&&Math.abs((e.amt||0)-t.amount)<0.01);
+  });
+
+  // Summary bar
+  const total=biParsedRows.length;
+  const income=biParsedRows.filter(t=>t.type==='income').length;
+  const spending=biParsedRows.filter(t=>t.type==='spending').length;
+  const dups=biParsedRows.filter(t=>t.duplicate).length;
+  $id('biSummaryBar').innerHTML=`
+    <span>${total} total</span>
+    <span style="color:var(--green);">${income} income</span>
+    <span style="color:var(--red);">${spending} spending</span>
+    ${dups?`<span style="color:var(--gold);">⚠ ${dups} possible duplicates</span>`:''}`;
+
+  // Category options
+  const incCats=['💼 Income','📈 Investments','🔮 Other'];
+  const spCats=['🏠 Housing','🍔 Food','🚗 Transport','💡 Utilities','🛒 Shopping','🎮 Entertainment','💊 Health','🎓 Education','✈️ Holidays','👨‍👩‍👧 Family','💳 Debt Payments','📈 Investments','🔮 Other'];
+
+  const tbody=$id('biPreviewBody');
+  tbody.innerHTML='';
+  biParsedRows.forEach((t,i)=>{
+    const cats=t.type==='income'?incCats:spCats;
+    const tr=document.createElement('tr');
+    tr.className=t.type+(t.duplicate?' duplicate':'');
+    tr.innerHTML=`
+      <td><input type="checkbox" id="biChk_${i}" ${t.include?'checked':''} onchange="biToggleRow(${i})" style="width:14px;height:14px;accent-color:var(--gold);cursor:pointer;"></td>
+      <td style="white-space:nowrap;">${esc(t.date)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.desc)}">${esc(t.desc)}</td>
+      <td style="text-align:right;white-space:nowrap;">${fmt(t.amount)}</td>
+      <td><span class="bi-badge ${t.type}">${t.type}${t.duplicate?'</span><span class="bi-badge duplicate">dup':''}</span></td>
+      <td><select onchange="biUpdateCat(${i},this.value)" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 4px;width:100%;">
+        ${cats.map(c=>`<option value="${c}" ${c===t.cat?'selected':''}>${c}</option>`).join('')}
+      </select></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function biToggleRow(i){ biParsedRows[i].include=!biParsedRows[i].include; }
+function biUpdateCat(i,val){ biParsedRows[i].cat=val; }
+
+// ── CONFIRM IMPORT ──
+function biConfirmImport(){
+  const toImport=biParsedRows.filter(t=>t.include);
+  if(!toImport.length){ alert('No transactions selected.'); return; }
+  let added=0;
+  toImport.forEach(t=>{
+    const month=t.date.slice(0,7);
+    const m=getMonth(month);
+    const entry={id:Date.now().toString()+'_'+Math.random().toString(36).slice(2,5),src:t.desc,amt:t.amount,date:t.date,cat:t.cat};
+    if(t.type==='income'){
+      entry.cat='💼 Income';
+      m.income.push(entry);
+    } else {
+      m.spending.push(entry);
+    }
+    added++;
+  });
+  save(); closeBankImport(); render();
+  alert(`✓ Imported ${added} transaction${added!==1?'s':''} from ${BANK_CONFIGS[biCurrentBank].name}`);
+}
 let editingSubId = null;
 
 const SUB_CYCLES = {
