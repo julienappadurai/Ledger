@@ -3690,16 +3690,29 @@ function biRenderMappingRules(){
   const allCats=[...new Set([...incCats,...spCats])];
   rules.forEach((rule,i)=>{
     const row=document.createElement('div');
-    row.style.cssText='background:var(--s2);border-radius:8px;padding:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto 1fr auto auto;gap:8px;align-items:center;font-size:12px;';
+    row.style.cssText='background:var(--s2);border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;';
     row.innerHTML=`
-      <input value="${esc(rule.from)}" placeholder="Exact bank description…" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;font-family:'DM Mono',monospace;" oninput="biUpdateRule(${i},'from',this.value)">
-      <span style="color:var(--gold);text-align:center;font-size:16px;">→</span>
-      <input value="${esc(rule.to)}" placeholder="Friendly name…" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;" oninput="biUpdateRule(${i},'to',this.value)">
-      <select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 6px;color:var(--text);font-size:11px;outline:none;" onchange="biUpdateRule(${i},'cat',this.value)">
-        <option value="">Auto category</option>
-        ${allCats.map(c=>`<option value="${c}" ${rule.cat===c?'selected':''}>${c}</option>`).join('')}
-      </select>
-      <button onclick="biRemoveRule(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:0 4px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>`;
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;">Rule ${i+1}</div>
+        <button onclick="biRemoveRule(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:0 4px;line-height:1;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>
+      </div>
+      <div style="margin-bottom:7px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Bank description (exact match)</div>
+        <input value="${esc(rule.from)}" placeholder="e.g. BANK GIRO CREDIT REF KUWAIT INVESTMENT" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:11px;outline:none;font-family:'DM Mono',monospace;" oninput="biUpdateRule(${i},'from',this.value)">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rename to</div>
+          <input value="${esc(rule.to)}" placeholder="e.g. Salary" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;" oninput="biUpdateRule(${i},'to',this.value)">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Category</div>
+          <select style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 6px;color:var(--text);font-size:11px;outline:none;" onchange="biUpdateRule(${i},'cat',this.value)">
+            <option value="">Auto</option>
+            ${allCats.map(c=>`<option value="${c}" ${rule.cat===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
     container.appendChild(row);
   });
 }
