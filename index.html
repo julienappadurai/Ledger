@@ -3480,21 +3480,43 @@ function biHandleDrop(e){
 function biHandleFile(file){
   if(!file){ return; }
   $id('biFileStatus').textContent='Reading '+file.name+'…';
-  const reader=new FileReader();
-  reader.onload=function(e){
-    let content;
-    try{ content=new TextDecoder('iso-8859-1').decode(e.target.result); }
-    catch(err){ content=new TextDecoder('utf-8').decode(e.target.result); }
+
+  function tryParse(content){
+    biParsedRows=biParseFile(content, biCurrentBank);
+    $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${file.name} — ${biParsedRows.length} transactions found</span>`;
+    $id('biStep2Next').style.display='';
+  }
+
+  // Method 1: readAsText with iso-8859-1 (most reliable for Santander on mobile)
+  const r1=new FileReader();
+  r1.onload=function(e){
     try{
-      biParsedRows=biParseFile(content, biCurrentBank);
-      $id('biFileStatus').innerHTML=`<span style="color:var(--green);">✓ ${file.name} — ${biParsedRows.length} transactions found</span>`;
-      $id('biStep2Next').style.display='';
-    } catch(err){
-      $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err.message)}</span>`;
+      tryParse(e.target.result);
+    } catch(err1){
+      // Method 2: readAsText with utf-8
+      const r2=new FileReader();
+      r2.onload=function(e2){
+        try{
+          tryParse(e2.target.result);
+        } catch(err2){
+          // Method 3: ArrayBuffer + TextDecoder
+          const r3=new FileReader();
+          r3.onload=function(e3){
+            try{
+              const content=new TextDecoder('iso-8859-1').decode(e3.target.result);
+              tryParse(content);
+            } catch(err3){
+              $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err3.message)}</span>`;
+            }
+          };
+          r3.readAsArrayBuffer(file);
+        }
+      };
+      r2.readAsText(file,'utf-8');
     }
   };
-  reader.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
-  reader.readAsArrayBuffer(file);
+  r1.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
+  r1.readAsText(file,'iso-8859-1');
 }
 
 async function biPickFromDrive(){
@@ -3573,16 +3595,16 @@ function biParseFile(content, bank){
 }
 
 function biParseSantanderHTML(html, config){
+  // Guard: ensure we have actual content
+  if(!html || html.length < 100) throw new Error('File content is empty or too short ('+( html ? html.length : 0)+' chars)');
+
   // Mobile-safe parser — no DOMParser, pure string splitting
-  // Splits on </tr> boundaries, extracts TD text content
   const trParts = html.split(/<\/tr>/i);
   const allRows = [];
   trParts.forEach(part => {
     const cells = [];
-    // Split on <td...> — handles both <td> and <td style="...">
     const tdParts = part.split(/<td[^>]*>/i);
     for(let j=1; j<tdParts.length; j++){
-      // Strip all HTML tags, decode entities, collapse whitespace
       let text = tdParts[j]
         .replace(/<[^>]+>/g, '')
         .replace(/&nbsp;/g, ' ')
@@ -3592,7 +3614,6 @@ function biParseSantanderHTML(html, config){
         .replace(/&#\d+;/g, '')
         .replace(/\s+/g, ' ')
         .trim();
-      // Remove trailing </td content if present
       const closeIdx = text.search(/<\/td/i);
       if(closeIdx !== -1) text = text.slice(0, closeIdx).trim();
       cells.push(text);
@@ -3600,9 +3621,9 @@ function biParseSantanderHTML(html, config){
     if(cells.some(c => c.length > 0)) allRows.push(cells);
   });
 
-  if(allRows.length < 4) throw new Error('File appears empty or in wrong format ('+allRows.length+' rows found)');
+  if(allRows.length < 3) throw new Error('File appears empty or in wrong format ('+allRows.length+' rows found)');
 
-  // Santander structure (0-based on allRows):
+  // Santander structure:
   // Row 0: "Transactions" title
   // Row 1: Account number + date range
   // Row 2: Headers — Date[1], Description[3], Money in[5], Money Out[6], Balance[7]
