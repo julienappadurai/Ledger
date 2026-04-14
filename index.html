@@ -935,6 +935,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div class="field"><label>Category</label>
       <select id="incCat">
         <option value="💼 Income">💼 Income</option>
+        <option value="💰 Salary Payment">💰 Salary Payment</option>
         <option value="📈 Investments">📈 Investments</option>
         <option value="🏠 Housing">🏠 Housing</option>
         <option value="🎁 Gift">🎁 Gift</option>
@@ -1514,10 +1515,10 @@ function setViewMode(mode){
   if(mode==='payperiod'){
     const periods = getPayPeriods();
     if(!periods.length){
-      $id('payPeriodNote').textContent = 'No Salary transactions found — add income named "Salary" to use pay periods';
+      $id('payPeriodNote').textContent = 'No 💰 Salary Payment entries found — categorise an income entry as Salary Payment to use pay periods';
       $id('payPeriodNote').style.color = 'var(--red)';
     } else {
-      $id('payPeriodNote').textContent = `Based on ${periods.length} Salary payment${periods.length>1?'s':''} found`;
+      $id('payPeriodNote').textContent = `Based on ${periods.length} Salary Payment${periods.length>1?'s':''} found`;
       $id('payPeriodNote').style.color = 'var(--muted)';
       // Default to most recent period
       activePeriod = periods[periods.length-1];
@@ -1526,25 +1527,23 @@ function setViewMode(mode){
   render();
 }
 
-// Find all Salary income dates (from direct entries and recurring templates)
+// Find all Salary Payment category dates (from direct entries and recurring templates)
 function getSalaryDates(){
   const dates = [];
-  // Scan all months for direct salary entries
+  // Scan all months for direct salary category entries
   Object.entries(D.months||{}).forEach(([month, data])=>{
     (data.income||[]).forEach(e=>{
-      if(isSalary(e.src||'') && e.date){
+      if(isSalary(e) && e.date){
         dates.push(e.date);
       }
     });
   });
-  // Also include generated entries from recurring templates for the next 12 months
-  (D.templates||[]).filter(t=>t.type==='income'&&isSalary(t.src||'')).forEach(t=>{
-    // Generate dates for 24 months from startMonth
+  // Also include generated entries from recurring templates
+  (D.templates||[]).filter(t=>t.type==='income'&&isSalary(t)).forEach(t=>{
     const [sy,sm]=t.startMonth.split('-').map(Number);
     for(let i=0;i<=24;i++){
       const d=new Date(sy,sm-1+i,1);
       const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      // Only if not overridden/skipped
       const isSkipped=(D.deleted||[]).some(x=>x.templateId===t.id&&x.month===k);
       if(!isSkipped){
         const override=findOverride(t.id,k);
@@ -1556,12 +1555,11 @@ function getSalaryDates(){
       }
     }
   });
-  // Deduplicate and sort
   return [...new Set(dates)].sort();
 }
 
-function isSalary(src){
-  return src.toLowerCase().trim()==='salary';
+function isSalary(entry){
+  return (entry.cat||'').trim()==='💰 Salary Payment';
 }
 
 // Build pay periods: each period runs from one salary date to the day before the next
@@ -1638,7 +1636,7 @@ function buildMonthStrip(){
   const strip=$id('monthStrip'); strip.innerHTML='';
   if(viewMode==='payperiod'){
     const periods=getPayPeriods();
-    if(!periods.length){ strip.innerHTML='<span style="font-size:12px;color:var(--muted);padding:8px;">Add a Salary income entry to see pay periods</span>'; return; }
+    if(!periods.length){ strip.innerHTML='<span style="font-size:12px;color:var(--muted);padding:8px;">Categorise an income entry as 💰 Salary Payment to see pay periods</span>'; return; }
     periods.forEach(p=>{
       const isActive=activePeriod&&p.start===activePeriod.start;
       const b=document.createElement('button');
@@ -1811,7 +1809,7 @@ function renderYearTable(){
 
   if(viewMode==='payperiod'){
     const periods=getPayPeriods();
-    if(!periods.length){ tbl.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No Salary dates found</td></tr>'; return; }
+    if(!periods.length){ tbl.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No Salary Payment dates found</td></tr>'; return; }
     const rows=periods.map(p=>({lbl:p.label,inc:totalIncomeForPeriod(p),sp:totalSpendingForPeriod(p),sv:savedForPeriod(p),p}));
     const total=rows.reduce((s,r)=>s+r.sv,0);
     tbl.innerHTML=`<thead><tr><th>Pay Period</th><th>Income</th><th>Spending</th><th style="text-align:right">Saved</th></tr></thead><tbody>`+
