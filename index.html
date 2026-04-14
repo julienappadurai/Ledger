@@ -637,6 +637,10 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
           <div class="bank-card-icon">🏦</div>
           <div class="bank-card-name">Santander</div>
         </div>
+        <div class="bank-card" id="bankCardMonzo" onclick="selectBank('monzo')">
+          <div class="bank-card-icon">🔴</div>
+          <div class="bank-card-name">Monzo</div>
+        </div>
         <div class="bank-card" style="opacity:.4;cursor:not-allowed;" title="Coming soon">
           <div class="bank-card-icon">🏛️</div>
           <div class="bank-card-name">Barclays<br><span style="font-size:9px;color:var(--muted);">Coming soon</span></div>
@@ -659,7 +663,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
         <div class="bi-upload-icon">📂</div>
         <div class="bi-upload-label">Tap to choose file from device<br><span style="font-size:11px;">or drag and drop</span></div>
       </div>
-      <input type="file" id="biFi" accept=".xls,.xlsx" style="display:none;" onchange="biHandleFile(this.files[0])">
+      <input type="file" id="biFi" accept=".xls,.xlsx,.csv" style="display:none;" onchange="biHandleFile(this.files[0])">
       <div style="text-align:center;margin:10px 0;font-size:12px;color:var(--muted);">— or —</div>
       <button class="hbtn" style="width:100%;justify-content:center;display:flex;gap:8px;" onclick="biPickFromDrive()">
         <span>📁</span> Choose from Google Drive
@@ -3638,15 +3642,38 @@ let biCurrentStep    = 1;
 const BANK_CONFIGS = {
   santander: {
     name: 'Santander',
-    fileType: 'xls-html',  // HTML disguised as XLS
-    skipRows: 2,           // skip title and account rows
-    dataStartRow: 3,       // data starts at row index 3 (after title, account, header)
+    fileType: 'xls-html',
+    skipRows: 2,
+    dataStartRow: 3,
     columns: {
       date:     { index:1, label:'Date',        ledgerField:'Date' },
       desc:     { index:3, label:'Description', ledgerField:'Description (used as Source)' },
       moneyIn:  { index:5, label:'Money in',    ledgerField:'Amount (Income)' },
       moneyOut: { index:6, label:'Money Out',   ledgerField:'Amount (Spending)' },
       balance:  { index:7, label:'Balance',     ledgerField:'(not imported)' },
+    }
+  },
+  monzo: {
+    name: 'Monzo',
+    fileType: 'csv',
+    columns: {
+      date:    { header:'Date',      label:'Date',     ledgerField:'Date' },
+      desc:    { header:'Name',      label:'Name',     ledgerField:'Description (used as Source)' },
+      cat:     { header:'Category',  label:'Category', ledgerField:'Category (auto-mapped)' },
+      moneyIn: { header:'Money In',  label:'Money In', ledgerField:'Amount (Income)' },
+      moneyOut:{ header:'Money Out', label:'Money Out',ledgerField:'Amount (Spending)' },
+    },
+    catMap: {
+      'Transport':    '🚗 Transport',
+      'Eating out':   '🍔 Food',
+      'Groceries':    '🍔 Food',
+      'Bills':        '💡 Utilities',
+      'Shopping':     '🛒 Shopping',
+      'Entertainment':'🎮 Entertainment',
+      'Holidays':     '✈️ Holidays',
+      'Income':       '💼 Income',
+      'Transfers':    '🔮 Other',
+      'General':      '🔮 Other',
     }
   }
 };
@@ -3673,7 +3700,8 @@ function biGoStep(n){
 function selectBank(bank){
   biCurrentBank=bank;
   document.querySelectorAll('.bank-card').forEach(c=>c.classList.remove('on'));
-  $id('bankCard'+bank.charAt(0).toUpperCase()+bank.slice(1)).classList.add('on');
+  const cardId='bankCard'+bank.charAt(0).toUpperCase()+bank.slice(1);
+  if($id(cardId)) $id(cardId).classList.add('on');
   $id('biStepBankLabel').textContent=BANK_CONFIGS[bank].name;
 }
 
@@ -3687,6 +3715,7 @@ function biHandleDrop(e){
 function biHandleFile(file){
   if(!file){ return; }
   $id('biFileStatus').textContent='Reading '+file.name+'…';
+  const config=BANK_CONFIGS[biCurrentBank];
 
   function tryParse(content){
     biParsedRows=biParseFile(content, biCurrentBank);
@@ -3694,36 +3723,39 @@ function biHandleFile(file){
     $id('biStep2Next').style.display='';
   }
 
-  // Method 1: readAsText with iso-8859-1 (most reliable for Santander on mobile)
-  const r1=new FileReader();
-  r1.onload=function(e){
-    try{
-      tryParse(e.target.result);
-    } catch(err1){
-      // Method 2: readAsText with utf-8
-      const r2=new FileReader();
-      r2.onload=function(e2){
-        try{
-          tryParse(e2.target.result);
-        } catch(err2){
-          // Method 3: ArrayBuffer + TextDecoder
-          const r3=new FileReader();
-          r3.onload=function(e3){
-            try{
-              const content=new TextDecoder('iso-8859-1').decode(e3.target.result);
-              tryParse(content);
-            } catch(err3){
-              $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err3.message)}</span>`;
-            }
-          };
-          r3.readAsArrayBuffer(file);
-        }
-      };
-      r2.readAsText(file,'utf-8');
-    }
-  };
-  r1.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
-  r1.readAsText(file,'iso-8859-1');
+  if(config.fileType==='csv'){
+    // CSV: read as utf-8
+    const r=new FileReader();
+    r.onload=function(e){
+      try{ tryParse(e.target.result); }
+      catch(err){ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err.message)}</span>`; }
+    };
+    r.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
+    r.readAsText(file,'utf-8');
+  } else {
+    // XLS-HTML: try iso-8859-1 first, then utf-8, then ArrayBuffer
+    const r1=new FileReader();
+    r1.onload=function(e){
+      try{ tryParse(e.target.result); }
+      catch(err1){
+        const r2=new FileReader();
+        r2.onload=function(e2){
+          try{ tryParse(e2.target.result); }
+          catch(err2){
+            const r3=new FileReader();
+            r3.onload=function(e3){
+              try{ const content=new TextDecoder('iso-8859-1').decode(e3.target.result); tryParse(content); }
+              catch(err3){ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err3.message)}</span>`; }
+            };
+            r3.readAsArrayBuffer(file);
+          }
+        };
+        r2.readAsText(file,'utf-8');
+      }
+    };
+    r1.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
+    r1.readAsText(file,'iso-8859-1');
+  }
 }
 
 async function biPickFromDrive(){
@@ -3798,7 +3830,69 @@ function biShowDrivePicker(files){
 function biParseFile(content, bank){
   const config=BANK_CONFIGS[bank];
   if(config.fileType==='xls-html') return biParseSantanderHTML(content, config);
+  if(config.fileType==='csv')      return biParseMonzoCSV(content, config);
   throw new Error('Unknown file type: '+config.fileType);
+}
+
+// ── CSV HELPER ──
+function biParseCSVRows(text){
+  // Split into lines, parse quoted fields
+  const lines=text.split(/\r?\n/);
+  const rows=[];
+  lines.forEach(line=>{
+    if(!line.trim()) return;
+    const cells=[]; let cur=''; let inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){ if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ; }
+      else if(ch===','&&!inQ){ cells.push(cur.trim()); cur=''; }
+      else cur+=ch;
+    }
+    cells.push(cur.trim());
+    rows.push(cells);
+  });
+  return rows;
+}
+
+function biParseMonzoCSV(csv, config){
+  const rows=biParseCSVRows(csv);
+  if(rows.length<2) throw new Error('CSV appears empty');
+  const headers=rows[0].map(h=>h.replace(/^\uFEFF/,'')); // strip BOM
+  const cols=config.columns;
+
+  // Find column indices by header name
+  function col(header){ const i=headers.indexOf(header); if(i===-1) throw new Error('Column "'+header+'" not found'); return i; }
+  const iDate    = col(cols.date.header);
+  const iDesc    = col(cols.desc.header);
+  const iCat     = col(cols.cat.header);
+  const iMoneyIn = col(cols.moneyIn.header);
+  const iMoneyOut= col(cols.moneyOut.header);
+
+  const transactions=[];
+  for(let i=1;i<rows.length;i++){
+    const row=rows[i];
+    if(!row||row.every(c=>!c)) continue;
+    const dateRaw = row[iDate]||'';
+    const desc    = row[iDesc]||'';
+    const catRaw  = row[iCat]||'';
+    const moneyIn = row[iMoneyIn]||'';
+    const moneyOut= row[iMoneyOut]||'';
+
+    const date=biParseDate(dateRaw);
+    if(!date) continue;
+
+    const cat=config.catMap[catRaw]||'🔮 Other';
+    const amtIn =biParseAmount(moneyIn);
+    const amtOut=biParseAmount(moneyOut);
+
+    if(amtIn!==null&&amtIn>0){
+      transactions.push({type:'income', date, desc, amount:amtIn, cat, include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
+    } else if(amtOut!==null&&amtOut>0){
+      transactions.push({type:'spending', date, desc, amount:amtOut, cat, include:true, duplicate:false, id:'bi_'+Date.now()+'_'+i});
+    }
+  }
+  if(!transactions.length) throw new Error('No transactions found — check this is a Monzo CSV export');
+  return transactions;
 }
 
 function biParseSantanderHTML(html, config){
@@ -3961,21 +4055,31 @@ function biApplyRules(transactions){
 function biRenderMapping(){
   const config=BANK_CONFIGS[biCurrentBank];
   const cols=config.columns;
-  // Get first 3 data rows as examples
   const examples=biParsedRows.slice(0,3);
   const tbody=$id('biMappingBody');
   tbody.innerHTML='';
 
-  const mappings=[
-    {col:cols.date,    examples:examples.map(e=>e.date)},
-    {col:cols.desc,    examples:examples.map(e=>e.desc.slice(0,35)+(e.desc.length>35?'…':''))},
-    {col:cols.moneyIn, examples:examples.map(e=>e.type==='income'?'£'+e.amount.toFixed(2):'—')},
-    {col:cols.moneyOut,examples:examples.map(e=>e.type==='spending'?'£'+e.amount.toFixed(2):'—')},
-    {col:cols.balance, examples:['(skipped)','(skipped)','(skipped)']},
-  ];
+  const mappings=[];
+  if(config.fileType==='xls-html'){
+    mappings.push(
+      {col:cols.date,    examples:examples.map(e=>e.date)},
+      {col:cols.desc,    examples:examples.map(e=>e.desc.slice(0,35)+(e.desc.length>35?'…':''))},
+      {col:cols.moneyIn, examples:examples.map(e=>e.type==='income'?'£'+e.amount.toFixed(2):'—')},
+      {col:cols.moneyOut,examples:examples.map(e=>e.type==='spending'?'£'+e.amount.toFixed(2):'—')},
+      {col:cols.balance, examples:['(skipped)','(skipped)','(skipped)']},
+    );
+  } else {
+    mappings.push(
+      {col:cols.date,    examples:examples.map(e=>e.date)},
+      {col:cols.desc,    examples:examples.map(e=>e.desc.slice(0,35)+(e.desc.length>35?'…':''))},
+      {col:cols.cat,     examples:examples.map(e=>e.cat)},
+      {col:cols.moneyIn, examples:examples.map(e=>e.type==='income'?'£'+e.amount.toFixed(2):'—')},
+      {col:cols.moneyOut,examples:examples.map(e=>e.type==='spending'?'£'+e.amount.toFixed(2):'—')},
+    );
+  }
 
   mappings.forEach(m=>{
-    const isSkipped=m.col.ledgerField.includes('not imported');
+    const isSkipped=(m.col.ledgerField||'').includes('not imported');
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td style="font-family:'DM Mono',monospace;font-weight:500;">${esc(m.col.label)}</td>
