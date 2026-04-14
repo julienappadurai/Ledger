@@ -631,12 +631,26 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       </table>
       <div class="mbtns">
         <button class="mbtn-g" onclick="biGoStep(2)">← Back</button>
-        <button class="mbtn-p" onclick="biGoStep(4)">Preview transactions →</button>
+        <button class="mbtn-p" onclick="biGoStep(4)">Description Rules →</button>
       </div>
     </div>
 
-    <!-- Step 4: Transaction preview & review -->
+    <!-- Step 4: Description mapping rules -->
     <div class="bank-step" id="biStep4">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">Description Rules</div>
+        <button class="hbtn" onclick="biAddMappingRule()" style="color:var(--gold);border-color:rgba(201,168,76,.3);font-size:10px;">+ Add Rule</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">These rules rename bank descriptions to friendlier names and optionally set the category. Rules are saved and reused each import.</p>
+      <div id="biMappingRules"></div>
+      <div class="mbtns">
+        <button class="mbtn-g" onclick="biGoStep(3)">← Back</button>
+        <button class="mbtn-p" onclick="biGoStep(5)">Preview transactions →</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Transaction preview & review -->
+    <div class="bank-step" id="biStep5">
       <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Review Transactions</div>
       <div class="bi-summary" id="biSummaryBar"></div>
       <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
@@ -658,7 +672,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
         ⚠ flagged rows are potential duplicates — uncheck to skip them
       </div>
       <div class="mbtns" style="margin-top:16px;">
-        <button class="mbtn-g" onclick="biGoStep(3)">← Back</button>
+        <button class="mbtn-g" onclick="biGoStep(4)">← Back</button>
         <button class="mbtn-p" onclick="biConfirmImport()">✓ Import selected</button>
       </div>
     </div>
@@ -896,6 +910,15 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Drive Backups</div>
       <div id="backupList" style="max-height:180px;overflow-y:auto;"></div>
       <div id="backupListMsg" style="font-size:12px;color:var(--muted);padding:6px 0;">Loading backups…</div>
+    </div>
+    <div style="margin-top:20px;padding:14px;background:var(--s2);border-radius:10px;border:1px solid var(--border);">
+      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Delete Transactions by Date Range</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Permanently deletes all income and spending entries within the selected months. Recurring templates, subscriptions, investments and net worth data are not affected.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="field" style="margin-bottom:0;"><label>From month</label><input type="month" id="delRangeFrom" style="width:100%;"></div>
+        <div class="field" style="margin-bottom:0;"><label>To month</label><input type="month" id="delRangeTo" style="width:100%;"></div>
+      </div>
+      <button onclick="deleteByDateRange()" style="width:100%;padding:9px;background:transparent;border:1px solid rgba(224,92,92,.4);border-radius:7px;color:var(--red);cursor:pointer;font-size:13px;transition:all .15s;" onmouseover="this.style.background='rgba(224,92,92,.08)'" onmouseout="this.style.background='transparent'">🗑 Delete transactions in range</button>
     </div>
     <div class="mbtns"><button class="mbtn-g" onclick="closeSettings()">Cancel</button><button class="mbtn-p" onclick="saveSettings()">Save</button></div>
     <div style="margin-top:12px;text-align:center;"><button onclick="changePin()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:underline;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">Change PIN</button></div>
@@ -2097,6 +2120,31 @@ function saveSettings(){
   D.settings.goal=parseFloat($id('setGoal').value)||2000;
   D.settings.reminderEmail=$id('setReminderEmail').value.trim();
   save(); closeSettings(); render();
+}
+
+function deleteByDateRange(){
+  const from=$id('delRangeFrom').value;
+  const to=$id('delRangeTo').value;
+  if(!from||!to){ alert('Please select both a from and to month.'); return; }
+  if(from>to){ alert('From month must be before or equal to to month.'); return; }
+  // Count affected months
+  const affected=Object.keys(D.months||{}).filter(k=>k>=from&&k<=to);
+  if(!affected.length){ alert('No transactions found in that date range.'); return; }
+  // Count entries
+  const incCount=affected.reduce((s,k)=>s+(D.months[k].income||[]).length,0);
+  const spCount=affected.reduce((s,k)=>s+(D.months[k].spending||[]).length,0);
+  const fromLabel=new Date(from+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const toLabel=new Date(to+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  if(!confirm(`Delete all transactions from ${fromLabel} to ${toLabel}?\n\n${incCount} income entries and ${spCount} spending entries will be permanently deleted.\n\nThis cannot be undone (but you can restore from a Drive backup).`)) return;
+  // Delete month data and associated deleted/override flags
+  affected.forEach(k=>{
+    delete D.months[k];
+    // Remove any deleted-template entries for these months
+    D.deleted=(D.deleted||[]).filter(d=>d.month<from||d.month>to);
+    // Remove any month-specific overrides in the month data (already deleted via D.months)
+  });
+  save(); closeSettings(); render();
+  alert(`✓ Deleted transactions from ${fromLabel} to ${toLabel}.`);
 }
 $id('settingsOv').addEventListener('click',e=>{ if(e.target===$id('settingsOv')) closeSettings(); });
 
@@ -3409,9 +3457,10 @@ function biGoStep(n){
   biCurrentStep=n;
   document.querySelectorAll('.bank-step').forEach(s=>s.classList.remove('on'));
   $id('biStep'+n).classList.add('on');
-  $id('bankImportTitle').textContent = ['','Select Bank','Upload File','Column Mapping','Review & Import'][n]||'Bank Import';
+  $id('bankImportTitle').textContent=['','Select Bank','Upload File','Column Mapping','Description Rules','Review & Import'][n]||'Bank Import';
   if(n===3) biRenderMapping();
-  if(n===4) biRenderPreview();
+  if(n===4) biRenderMappingRules();
+  if(n===5) biRenderPreview();
 }
 
 function selectBank(bank){
@@ -3551,7 +3600,74 @@ function biParseAmount(val){
   return isNaN(n)?null:n;
 }
 
-// ── MAPPING RENDER ──
+// ── DESCRIPTION MAPPING RULES ──
+const BI_RULES_KEY = 'ledger_bi_rules_santander';
+
+function biLoadRules(){
+  try{ return JSON.parse(localStorage.getItem(BI_RULES_KEY)||'[]'); }
+  catch(e){ return []; }
+}
+function biSaveRules(rules){ localStorage.setItem(BI_RULES_KEY, JSON.stringify(rules)); }
+
+function biRenderMappingRules(){
+  const rules = biLoadRules();
+  const container = $id('biMappingRules');
+  container.innerHTML = '';
+  if(!rules.length){
+    container.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:12px 0;">No rules yet — tap + Add Rule to create one.</div>';
+    return;
+  }
+  const spCats=['🏠 Housing','🍔 Food','🚗 Transport','💡 Utilities','🛒 Shopping','🎮 Entertainment','💊 Health','🎓 Education','✈️ Holidays','👨‍👩‍👧 Family','💳 Debt Payments','📈 Investments','🔮 Other'];
+  const incCats=['💼 Income','📈 Investments','🔮 Other'];
+  const allCats=[...new Set([...incCats,...spCats])];
+  rules.forEach((rule,i)=>{
+    const row=document.createElement('div');
+    row.style.cssText='background:var(--s2);border-radius:8px;padding:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto 1fr auto auto;gap:8px;align-items:center;font-size:12px;';
+    row.innerHTML=`
+      <input value="${esc(rule.from)}" placeholder="Exact bank description…" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;font-family:'DM Mono',monospace;" oninput="biUpdateRule(${i},'from',this.value)">
+      <span style="color:var(--gold);text-align:center;font-size:16px;">→</span>
+      <input value="${esc(rule.to)}" placeholder="Friendly name…" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;" oninput="biUpdateRule(${i},'to',this.value)">
+      <select style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 6px;color:var(--text);font-size:11px;outline:none;" onchange="biUpdateRule(${i},'cat',this.value)">
+        <option value="">Auto category</option>
+        ${allCats.map(c=>`<option value="${c}" ${rule.cat===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <button onclick="biRemoveRule(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:0 4px;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">×</button>`;
+    container.appendChild(row);
+  });
+}
+
+function biAddMappingRule(){
+  const rules=biLoadRules();
+  rules.push({from:'',to:'',cat:''});
+  biSaveRules(rules);
+  biRenderMappingRules();
+}
+function biUpdateRule(i,field,val){
+  const rules=biLoadRules();
+  if(rules[i]) rules[i][field]=val;
+  biSaveRules(rules);
+}
+function biRemoveRule(i){
+  const rules=biLoadRules();
+  rules.splice(i,1);
+  biSaveRules(rules);
+  biRenderMappingRules();
+}
+
+function biApplyRules(transactions){
+  const rules=biLoadRules().filter(r=>r.from.trim());
+  return transactions.map(t=>{
+    const t2={...t};
+    for(const rule of rules){
+      if(t2.desc.trim().toUpperCase()===rule.from.trim().toUpperCase()){
+        t2.desc=rule.to||t2.desc;
+        if(rule.cat) t2.cat=rule.cat;
+        break;
+      }
+    }
+    return t2;
+  });
+}
 function biRenderMapping(){
   const config=BANK_CONFIGS[biCurrentBank];
   const cols=config.columns;
@@ -3584,6 +3700,9 @@ function biRenderMapping(){
 
 // ── PREVIEW RENDER ──
 function biRenderPreview(){
+  // Apply description mapping rules first
+  const mapped = biApplyRules(biParsedRows);
+  biParsedRows = mapped;
   // Mark duplicates against existing data
   biParsedRows.forEach(t=>{
     const month=t.date.slice(0,7);
