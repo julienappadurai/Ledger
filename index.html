@@ -3836,13 +3836,10 @@ function biConfirmImport(){
   toImport.forEach(t=>{
     const month=t.date.slice(0,7);
     const m=getMonth(month);
+    // Use category from rule/preview — do not overwrite
     const entry={id:Date.now().toString()+'_'+Math.random().toString(36).slice(2,5),src:t.desc,amt:t.amount,date:t.date,cat:t.cat};
-    if(t.type==='income'){
-      entry.cat='💼 Income';
-      m.income.push(entry);
-    } else {
-      m.spending.push(entry);
-    }
+    if(t.type==='income') m.income.push(entry);
+    else m.spending.push(entry);
     added++;
   });
   save(); closeBankImport(); render();
