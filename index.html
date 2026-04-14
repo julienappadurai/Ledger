@@ -1894,7 +1894,6 @@ function addIncome(){
 
 function editIncome(id){
   const generated=id.includes('_gen_');
-  const month=getMonth(activeMonth);
   if(generated){
     const templateId=id.split('_gen_')[0];
     const tmpl=(D.templates||[]).find(t=>t.id===templateId);
@@ -1909,8 +1908,14 @@ function editIncome(id){
     $id('incDelBtn').style.display=''; $id('incDelBtn').textContent='Skip this month';
     $id('incomeOv').classList.add('on'); return;
   }
-  const r=month.income.find(x=>x.id===id); if(!r) return;
-  editingIncome={type:'direct',id};
+  // Search all months — pay period entries may be outside activeMonth
+  let r=null, foundMonth=activeMonth;
+  for(const [k,data] of Object.entries(D.months||{})){
+    const found=(data.income||[]).find(x=>x.id===id);
+    if(found){ r=found; foundMonth=k; break; }
+  }
+  if(!r) return;
+  editingIncome={type:'direct',id,month:foundMonth};
   $id('incomeModalTitle').textContent='Edit Income';
   $id('incSrc').value=r.src; $id('incAmt').value=r.amt;
   $id('incCat').value=r.cat||'💼 Income'; $id('incExclude').checked=!!r.exclude;
@@ -1961,12 +1966,14 @@ function saveIncome(){
     const tmpl=D.templates.find(t=>t.id===editingIncome.templateId);
     if(tmpl){ tmpl.src=src; tmpl.amt=amt; tmpl.repeat=repeat; }
   } else {
-    const r=month.income.find(x=>x.id===editingIncome.id);
+    // Use the month stored when editIncome was called (may differ from activeMonth in pay period view)
+    const txMonth=getMonth(editingIncome.month||activeMonth);
+    const r=txMonth.income.find(x=>x.id===editingIncome.id);
     if(r){
-      r.src=src; r.amt=amt; r.date=date; r.repeat=repeat; r.exclude=incExclude||undefined;
+      r.src=src; r.cat=$id('incCat').value; r.amt=amt; r.date=date; r.repeat=repeat; r.exclude=incExclude||undefined;
       if(repeat&&repeat!=='none'&&!r.templateId){
-        D.templates.push({id:Date.now().toString(),type:'income',src,amt,repeat,startMonth:activeMonth,startDate:date});
-        month.income=month.income.filter(x=>x.id!==r.id);
+        D.templates.push({id:Date.now().toString(),type:'income',src,amt,repeat,startMonth:editingIncome.month||activeMonth,startDate:date});
+        txMonth.income=txMonth.income.filter(x=>x.id!==r.id);
       }
     }
   }
@@ -1983,8 +1990,8 @@ function deleteIncome(){
     D.deleted.push({templateId:editingIncome.templateId,month:activeMonth});
   } else {
     if(!confirm('Delete this income entry?')) return;
-    const month=getMonth(activeMonth);
-    month.income=month.income.filter(x=>x.id!==editingIncome.id);
+    const txMonth=getMonth(editingIncome.month||activeMonth);
+    txMonth.income=txMonth.income.filter(x=>x.id!==editingIncome.id);
   }
   save(); closeIncome(); render();
 }
@@ -2007,7 +2014,6 @@ function addCategory(){
 
 function editCat(id){
   const generated=id.includes('_gen_');
-  const month=getMonth(activeMonth);
   if(generated){
     const templateId=id.split('_gen_')[0];
     const tmpl=(D.templates||[]).find(t=>t.id===templateId);
@@ -2022,8 +2028,14 @@ function editCat(id){
     $id('catDelBtn').style.display=''; $id('catDelBtn').textContent='Skip this month';
     $id('catOv').classList.add('on'); return;
   }
-  const r=month.spending.find(x=>x.id===id); if(!r) return;
-  editingCat={type:'direct',id};
+  // Search all months — pay period entries may be outside activeMonth
+  let r=null, foundMonth=activeMonth;
+  for(const [k,data] of Object.entries(D.months||{})){
+    const found=(data.spending||[]).find(x=>x.id===id);
+    if(found){ r=found; foundMonth=k; break; }
+  }
+  if(!r) return;
+  editingCat={type:'direct',id,month:foundMonth};
   $id('catModalTitle').textContent='Edit Spending';
   $id('catSrc').value=r.src||''; $id('catExclude').checked=!!r.exclude;
   $id('catName').value=r.cat; $id('catAmt').value=r.amt;
@@ -2072,12 +2084,14 @@ function saveCat(){
     const tmpl=D.templates.find(t=>t.id===editingCat.templateId);
     if(tmpl){ tmpl.cat=cat; tmpl.amt=amt; tmpl.repeat=repeat; }
   } else {
-    const r=month.spending.find(x=>x.id===editingCat.id);
+    // Use the month stored when editCat was called (may differ from activeMonth in pay period view)
+    const txMonth=getMonth(editingCat.month||activeMonth);
+    const r=txMonth.spending.find(x=>x.id===editingCat.id);
     if(r){
-      r.cat=cat; r.amt=amt; r.date=date; r.repeat=repeat;
+      r.src=src; r.cat=cat; r.amt=amt; r.date=date; r.repeat=repeat; r.exclude=catExclude||undefined;
       if(repeat&&repeat!=='none'&&!r.templateId){
-        D.templates.push({id:Date.now().toString(),type:'spending',cat,amt,repeat,startMonth:activeMonth,startDate:date});
-        month.spending=month.spending.filter(x=>x.id!==r.id);
+        D.templates.push({id:Date.now().toString(),type:'spending',cat,amt,repeat,startMonth:editingCat.month||activeMonth,startDate:date});
+        txMonth.spending=txMonth.spending.filter(x=>x.id!==r.id);
       }
     }
   }
@@ -2094,8 +2108,8 @@ function deleteCat(){
     D.deleted.push({templateId:editingCat.templateId,month:activeMonth});
   } else {
     if(!confirm('Delete this spending entry?')) return;
-    const month=getMonth(activeMonth);
-    month.spending=month.spending.filter(x=>x.id!==editingCat.id);
+    const txMonth=getMonth(editingCat.month||activeMonth);
+    txMonth.spending=txMonth.spending.filter(x=>x.id!==editingCat.id);
   }
   save(); closeCat(); render();
 }
