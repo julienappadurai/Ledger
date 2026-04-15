@@ -4103,7 +4103,7 @@ function biRenderMappingRules(){
   const allCats=[...new Set([...incCats,...spCats])];
   rules.forEach((rule,i)=>{
     const row=document.createElement('div');
-    row.style.cssText='background:var(--s2);border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;';
+    row.style.cssText=`background:var(--s2);border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px;${rule.exclude?'border:1px solid rgba(92,158,224,.25);':''}`;
     row.innerHTML=`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;">Rule ${i+1}</div>
@@ -4111,12 +4111,12 @@ function biRenderMappingRules(){
       </div>
       <div style="margin-bottom:7px;">
         <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Bank description (exact match)</div>
-        <input value="${esc(rule.from)}" placeholder="e.g. BANK GIRO CREDIT REF KUWAIT INVESTMENT" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:11px;outline:none;font-family:'DM Mono',monospace;" oninput="biUpdateRule(${i},'from',this.value)">
+        <input value="${esc(rule.from)}" placeholder="e.g. AMERICAN EXPRESS" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:11px;outline:none;font-family:'DM Mono',monospace;" oninput="biUpdateRule(${i},'from',this.value)">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
         <div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Rename to</div>
-          <input value="${esc(rule.to)}" placeholder="e.g. Salary" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;" oninput="biUpdateRule(${i},'to',this.value)">
+          <input value="${esc(rule.to)}" placeholder="e.g. Amex Payment" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;outline:none;" oninput="biUpdateRule(${i},'to',this.value)">
         </div>
         <div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Category</div>
@@ -4125,6 +4125,13 @@ function biRenderMappingRules(){
             ${allCats.map(c=>`<option value="${c}" ${rule.cat===c?'selected':''}>${c}</option>`).join('')}
           </select>
         </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border-radius:6px;border:1px solid ${rule.exclude?'rgba(92,158,224,.35)':'var(--border)'};">
+        <input type="checkbox" id="biRuleExclude_${i}" ${rule.exclude?'checked':''} style="width:15px;height:15px;accent-color:var(--blue);cursor:pointer;flex-shrink:0;" onchange="biUpdateRule(${i},'exclude',this.checked)">
+        <div>
+          <div style="font-size:12px;color:var(--text);">Auto-exclude from totals</div>
+          <div style="font-size:10px;color:var(--muted);">Use for transfers & credit card payments — tracked but not counted</div>
+        </div>
       </div>`;
     container.appendChild(row);
   });
@@ -4132,7 +4139,7 @@ function biRenderMappingRules(){
 
 function biAddMappingRule(){
   const rules=biLoadRules();
-  rules.push({from:'',to:'',cat:''});
+  rules.push({from:'',to:'',cat:'',exclude:false});
   biSaveRules(rules);
   biRenderMappingRules();
 }
@@ -4140,6 +4147,8 @@ function biUpdateRule(i,field,val){
   const rules=biLoadRules();
   if(rules[i]) rules[i][field]=val;
   biSaveRules(rules);
+  // Re-render if exclude toggled (to update border colour)
+  if(field==='exclude') biRenderMappingRules();
 }
 function biRemoveRule(i){
   const rules=biLoadRules();
@@ -4154,8 +4163,9 @@ function biApplyRules(transactions){
     const t2={...t};
     for(const rule of rules){
       if(t2.desc.trim().toUpperCase()===rule.from.trim().toUpperCase()){
-        t2.desc=rule.to||t2.desc;
+        if(rule.to) t2.desc=rule.to;
         if(rule.cat) t2.cat=rule.cat;
+        if(rule.exclude) t2.include=false; // pre-uncheck in preview
         break;
       }
     }
@@ -4219,11 +4229,13 @@ function biRenderPreview(){
   const income=biParsedRows.filter(t=>t.type==='income').length;
   const spending=biParsedRows.filter(t=>t.type==='spending').length;
   const dups=biParsedRows.filter(t=>t.duplicate).length;
+  const autoExcl=biParsedRows.filter(t=>!t.include).length;
   $id('biSummaryBar').innerHTML=`
     <span>${total} total</span>
     <span style="color:var(--green);">${income} income</span>
     <span style="color:var(--red);">${spending} spending</span>
-    ${dups?`<span style="color:var(--gold);">⚠ ${dups} possible duplicates</span>`:''}`;
+    ${dups?`<span style="color:var(--gold);">⚠ ${dups} possible duplicates</span>`:''}
+    ${autoExcl?`<span style="color:var(--blue);">⊘ ${autoExcl} auto-excluded</span>`:''}`;
 
   // Category options
   const incCats=['💼 Income','💰 Salary Payment','📈 Investments','🔮 Other'];
@@ -4235,10 +4247,11 @@ function biRenderPreview(){
     const cats=t.type==='income'?incCats:spCats;
     const tr=document.createElement('tr');
     tr.className=t.type+(t.duplicate?' duplicate':'');
+    if(!t.include) tr.style.opacity='0.45';
     tr.innerHTML=`
       <td><input type="checkbox" id="biChk_${i}" ${t.include?'checked':''} onchange="biToggleRow(${i})" style="width:14px;height:14px;accent-color:var(--gold);cursor:pointer;"></td>
       <td style="white-space:nowrap;">${esc(t.date)}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.desc)}">${esc(t.desc)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.desc)}">${esc(t.desc)}${!t.include&&!t.duplicate?'<span class="bi-badge" style="background:rgba(92,158,224,.15);color:var(--blue);margin-left:4px;">excl</span>':''}</td>
       <td style="text-align:right;white-space:nowrap;">${fmt(t.amount)}</td>
       <td><span class="bi-badge ${t.type}">${t.type}${t.duplicate?'</span><span class="bi-badge duplicate">dup':''}</span></td>
       <td><select onchange="biUpdateCat(${i},this.value)" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;padding:2px 4px;width:100%;">
@@ -4253,19 +4266,27 @@ function biUpdateCat(i,val){ biParsedRows[i].cat=val; }
 
 // ── CONFIRM IMPORT ──
 function biConfirmImport(){
-  const toImport=biParsedRows.filter(t=>t.include);
-  if(!toImport.length){ alert('No transactions selected.'); return; }
-  let added=0;
-  toImport.forEach(t=>{
+  // Import all rows — included ones normally, excluded ones with exclude:true
+  const all=biParsedRows;
+  if(!all.length){ alert('No transactions to import.'); return; }
+  let added=0, excluded=0;
+  all.forEach(t=>{
     const month=t.date.slice(0,7);
     const m=getMonth(month);
-    const entry={id:Date.now().toString()+'_'+Math.random().toString(36).slice(2,5),src:t.desc,amt:t.amount,date:t.date,cat:t.cat,importSrc:BANK_CONFIGS[biCurrentBank].name};
+    const entry={
+      id:Date.now().toString()+'_'+Math.random().toString(36).slice(2,5),
+      src:t.desc, amt:t.amount, date:t.date, cat:t.cat,
+      importSrc:BANK_CONFIGS[biCurrentBank].name,
+      exclude:t.include?undefined:true  // auto-excluded rows tracked but not counted
+    };
     if(t.type==='income') m.income.push(entry);
     else m.spending.push(entry);
-    added++;
+    if(t.include) added++; else excluded++;
   });
   save(); closeBankImport(); render();
-  alert(`✓ Imported ${added} transaction${added!==1?'s':''} from ${BANK_CONFIGS[biCurrentBank].name}`);
+  const msg=`✓ Imported ${added} transaction${added!==1?'s':''} from ${BANK_CONFIGS[biCurrentBank].name}`
+    +(excluded?`\n⊘ ${excluded} auto-excluded (tracked but not counted)`:'');
+  alert(msg);
 }
 let editingSubId = null;
 
