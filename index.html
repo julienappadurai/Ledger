@@ -136,7 +136,11 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .sub-status.active{background:rgba(76,175,125,.15);color:var(--green);}
 .sub-status.paused{background:rgba(201,168,76,.12);color:var(--gold);}
 .sub-status.cancelled{background:rgba(224,92,92,.12);color:var(--red);}
-.sub-empty{text-align:center;padding:32px;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);}
+.src-badge{display:inline-block;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.5px;padding:1px 5px;border-radius:4px;margin-left:4px;vertical-align:middle;background:var(--s2);border:1px solid var(--border);color:var(--muted);}
+.src-badge.santander{background:rgba(236,0,0,.1);border-color:rgba(236,0,0,.25);color:#ec0000;}
+.src-badge.monzo{background:rgba(255,100,50,.1);border-color:rgba(255,100,50,.25);color:#ff6432;}
+.src-badge.excel{background:rgba(33,115,70,.1);border-color:rgba(33,115,70,.25);color:#217346;}
+.src-badge.manual{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.2);color:var(--gold);}
 
 /* ── INVESTMENT TRACKER ── */
 .inv-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
@@ -1149,6 +1153,11 @@ const CUR  = key(NOW);
 
 function key(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function label(k){ const [y,m]=k.split('-'); return new Date(+y,+m-1,1).toLocaleString('en-GB',{month:'short',year:'2-digit'}); }
+function importSrcBadge(importSrc){
+  if(!importSrc) return '';
+  const cls=importSrc==='Manual'?'manual':importSrc==='Santander'?'santander':importSrc==='Monzo'?'monzo':importSrc==='Excel Import'?'excel':'';
+  return `<span class="src-badge ${cls}">${esc(importSrc)}</span>`;
+}
 function fmt(n){ const a=Math.abs(n).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}); return (n<0?'−':'')+'£'+a; }
 function fmtSign(n){ const a=Math.abs(n).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}); return (n>=0?'+':'−')+'£'+a; }
 function $id(id){ return document.getElementById(id); }
@@ -1915,8 +1924,9 @@ function renderIncomPanel(){
     const incDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
     const incRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
     const incExcludeBadge=r.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;" title="Excluded from totals">excl</span>':'';
+    const incSrcBadge=importSrcBadge(r.importSrc);
     row.innerHTML=`<div class="cat-icon">💰</div>
-      <div class="cat-name">${esc(r.src)}${incRepeatBadge}${incExcludeBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${incDateStr}</span></div>
+      <div class="cat-name">${esc(r.src)}${incRepeatBadge}${incExcludeBadge}${incSrcBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${incDateStr}</span></div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${r.exclude?'var(--muted)':'var(--green)'};cursor:pointer;opacity:${r.exclude?0.6:1};" onclick='editIncome("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
@@ -1949,8 +1959,9 @@ function renderSpendPanel(){
     const catDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
     const catRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
     const catExcludeBadge=r.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;" title="Excluded from totals">excl</span>':'';
+    const catSrcBadge=importSrcBadge(r.importSrc);
     row.innerHTML=`<div class="cat-icon">${icon}</div>
-      <div class="cat-name">${esc(name)}${catRepeatBadge}${catExcludeBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${catDateStr}</span></div>
+      <div class="cat-name">${esc(name)}${catRepeatBadge}${catExcludeBadge}${catSrcBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${catDateStr}</span></div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${r.exclude?'var(--muted)':'var(--red)'};cursor:pointer;opacity:${r.exclude?0.6:1};" onclick='editCat("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
@@ -2117,9 +2128,9 @@ function saveIncome(){
   const month=getMonth(targetMonth);
   if(!editingIncome){
     if(repeat&&repeat!=='none'){
-      const icat=$id('incCat').value; D.templates.push({id:Date.now().toString(),type:'income',src,cat:icat,amt,repeat,startMonth:targetMonth,startDate:date,exclude:incExclude||undefined});
+      const icat=$id('incCat').value; D.templates.push({id:Date.now().toString(),type:'income',src,cat:icat,amt,repeat,startMonth:targetMonth,startDate:date,exclude:incExclude||undefined,importSrc:'Manual'});
     } else {
-      const cat=$id('incCat').value; month.income.push({id:Date.now().toString(),src,cat,amt,date,exclude:incExclude||undefined});
+      const cat=$id('incCat').value; month.income.push({id:Date.now().toString(),src,cat,amt,date,exclude:incExclude||undefined,importSrc:'Manual'});
     }
   } else if(editingIncome.type==='template_instance'){
     month.income=month.income.filter(x=>x.templateId!==editingIncome.templateId);
@@ -2235,9 +2246,9 @@ function saveCat(){
   const month=getMonth(targetMonth);
   if(!editingCat){
     if(repeat&&repeat!=='none'){
-      D.templates.push({id:Date.now().toString(),type:'spending',src,cat,amt,repeat,startMonth:targetMonth,startDate:date,exclude:catExclude||undefined});
+      D.templates.push({id:Date.now().toString(),type:'spending',src,cat,amt,repeat,startMonth:targetMonth,startDate:date,exclude:catExclude||undefined,importSrc:'Manual'});
     } else {
-      month.spending.push({id:Date.now().toString(),src,cat,amt,date,exclude:catExclude||undefined});
+      month.spending.push({id:Date.now().toString(),src,cat,amt,date,exclude:catExclude||undefined,importSrc:'Manual'});
     }
   } else if(editingCat.type==='template_instance'){
     month.spending=month.spending.filter(x=>x.templateId!==editingCat.templateId);
@@ -3339,9 +3350,9 @@ function confirmXlsxImport(){
     if(e.id&&!e.id.startsWith('xl_')){
       const ex=m.income.find(x=>x.id===e.id);
       if(ex){Object.assign(ex,{src:e.src,cat:e.cat,amt:e.amt,date:e.date});updated++;}
-      else{m.income.push({id:e.id,src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;}
+      else{m.income.push({id:e.id,src:e.src,cat:e.cat,amt:e.amt,date:e.date,importSrc:'Excel Import'});added++;}
     } else if(!m.income.find(x=>x.src===e.src&&Math.abs(x.amt-e.amt)<0.01&&x.date===e.date)){
-      m.income.push({id:Date.now()+'_'+Math.random().toString(36).slice(2,5),src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;
+      m.income.push({id:Date.now()+'_'+Math.random().toString(36).slice(2,5),src:e.src,cat:e.cat,amt:e.amt,date:e.date,importSrc:'Excel Import'});added++;
     }
   });
 
@@ -3350,9 +3361,9 @@ function confirmXlsxImport(){
     if(e.id&&!e.id.startsWith('xl_')){
       const ex=m.spending.find(x=>x.id===e.id);
       if(ex){Object.assign(ex,{src:e.src,cat:e.cat,amt:e.amt,date:e.date});updated++;}
-      else{m.spending.push({id:e.id,src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;}
+      else{m.spending.push({id:e.id,src:e.src,cat:e.cat,amt:e.amt,date:e.date,importSrc:'Excel Import'});added++;}
     } else if(!m.spending.find(x=>x.src===e.src&&Math.abs(x.amt-e.amt)<0.01&&x.date===e.date)){
-      m.spending.push({id:Date.now()+'_'+Math.random().toString(36).slice(2,5),src:e.src,cat:e.cat,amt:e.amt,date:e.date});added++;
+      m.spending.push({id:Date.now()+'_'+Math.random().toString(36).slice(2,5),src:e.src,cat:e.cat,amt:e.amt,date:e.date,importSrc:'Excel Import'});added++;
     }
   });
 
@@ -3718,9 +3729,10 @@ function renderTransactions(){
     const isInc=t.type==='income';
     const exclBadge=t.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 4px;margin-left:3px;">excl</span>':'';
     const recurBadge=t.generated||t.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 4px;margin-left:2px;">↻</span>':'';
+    const srcBadge=importSrcBadge(t.importSrc);
     tr.innerHTML=`
       <td style="white-space:nowrap;font-family:'DM Mono',monospace;font-size:11px;padding:8px 6px;">${dateStr}</td>
-      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 6px;font-size:12px;">${esc(t.src||'')}${recurBadge}${exclBadge}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 6px;font-size:12px;">${esc(t.src||'')}${recurBadge}${exclBadge}${srcBadge}</td>
       <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted);padding:8px 6px;">${esc(t.cat||'')}</td>
       <td style="text-align:right;font-family:'DM Mono',monospace;font-size:12px;white-space:nowrap;padding:8px 6px;color:${t.exclude?'var(--muted)':isInc?'var(--green)':'var(--red)'};">${isInc?'+':'−'}${fmt(t.amt)}</td>`;
     tr.onmouseover=()=>tr.style.background='var(--s2)';
@@ -4247,8 +4259,7 @@ function biConfirmImport(){
   toImport.forEach(t=>{
     const month=t.date.slice(0,7);
     const m=getMonth(month);
-    // Use category from rule/preview — do not overwrite
-    const entry={id:Date.now().toString()+'_'+Math.random().toString(36).slice(2,5),src:t.desc,amt:t.amount,date:t.date,cat:t.cat};
+    const entry={id:Date.now().toString()+'_'+Math.random().toString(36).slice(2,5),src:t.desc,amt:t.amount,date:t.date,cat:t.cat,importSrc:BANK_CONFIGS[biCurrentBank].name};
     if(t.type==='income') m.income.push(entry);
     else m.spending.push(entry);
     added++;
