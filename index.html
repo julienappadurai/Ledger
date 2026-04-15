@@ -519,8 +519,17 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
         <span>Income</span>
         <button style="background:none;border:none;color:var(--green);cursor:pointer;font-size:18px;line-height:1;" onclick="addIncome()">+</button>
       </div>
+      <!-- Sort header -->
+      <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:4px;padding:4px 0 6px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+        <div onclick="panelSort('income','src')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;" id="incSortSrc">Source <span id="incSortSrcArrow"></span></div>
+        <div onclick="panelSort('income','cat')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;" id="incSortCat">Cat <span id="incSortCatArrow"></span></div>
+        <div onclick="panelSort('income','date')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;" id="incSortDate">Date <span id="incSortDateArrow"></span></div>
+        <div onclick="panelSort('income','amt')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;text-align:right;" id="incSortAmt">Amt <span id="incSortAmtArrow"></span></div>
+      </div>
       <div id="incomeRows"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;margin-top:4px;border-top:2px solid var(--border);">
+      <!-- Pagination -->
+      <div id="incPagination" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;margin-top:4px;border-top:2px solid var(--border);">
         <div class="cat-total-lbl">Total Income</div>
         <div class="income-total" id="incomeTotal">£0</div>
       </div>
@@ -532,7 +541,16 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
         <span>Spending</span>
         <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;line-height:1;" onclick="addCategory()">+</button>
       </div>
+      <!-- Sort header -->
+      <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:4px;padding:4px 0 6px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+        <div onclick="panelSort('spend','src')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;" id="spSortSrc">Source <span id="spSortSrcArrow"></span></div>
+        <div onclick="panelSort('spend','cat')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;" id="spSortCat">Cat <span id="spSortCatArrow"></span></div>
+        <div onclick="panelSort('spend','date')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;" id="spSortDate">Date <span id="spSortDateArrow"></span></div>
+        <div onclick="panelSort('spend','amt')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);cursor:pointer;user-select:none;text-align:right;" id="spSortAmt">Amt <span id="spSortAmtArrow"></span></div>
+      </div>
       <div id="catRows"></div>
+      <!-- Pagination -->
+      <div id="spPagination" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);"></div>
       <div class="cat-total-row">
         <div class="cat-total-lbl">Total Spending</div>
         <div class="cat-total-val" id="spendTotal">£0</div>
@@ -1707,7 +1725,7 @@ function buildMonthStrip(){
       const b=document.createElement('button');
       b.className='mbtn'+(isActive?' on':'');
       b.textContent=p.label;
-      b.onclick=()=>{ activePeriod=p; render(); };
+      b.onclick=()=>{ activePeriod=p; incPage=0; spPage=0; render(); };
       strip.appendChild(b);
     });
     setTimeout(()=>{ const on=strip.querySelector('.on'); if(on) on.scrollIntoView({inline:'center',behavior:'smooth'}); },50);
@@ -1718,7 +1736,7 @@ function buildMonthStrip(){
       const b=document.createElement('button');
       b.className='mbtn'+(k===activeMonth?' on':'');
       b.textContent=label(k);
-      b.onclick=()=>{ activeMonth=k; render(); };
+      b.onclick=()=>{ activeMonth=k; incPage=0; spPage=0; render(); };
       strip.appendChild(b);
     }
     setTimeout(()=>{ const on=strip.querySelector('.on'); if(on) on.scrollIntoView({inline:'center',behavior:'smooth'}); },50);
@@ -1797,7 +1815,7 @@ function renderChart(){
       const lbl=document.createElement('div'); lbl.className='blbl'; lbl.textContent=m.lbl;
       g.appendChild(barsWrap); g.appendChild(lbl);
       g.style.cursor='pointer';
-      g.onclick=()=>{ activePeriod=m.p; render(); };
+      g.onclick=()=>{ activePeriod=m.p; incPage=0; spPage=0; render(); };
       chart.appendChild(g);
     });
     return;
@@ -1822,52 +1840,130 @@ function renderChart(){
     const lbl=document.createElement('div'); lbl.className='blbl'; lbl.textContent=m.lbl;
     g.appendChild(barsWrap); g.appendChild(lbl);
     g.style.cursor='pointer';
-    g.onclick=()=>{ activeMonth=m.k; render(); };
+    g.onclick=()=>{ activeMonth=m.k; incPage=0; spPage=0; render(); };
     chart.appendChild(g);
   });
 }
 
+// ── PANEL SORT & PAGINATION STATE ──
+const PANEL_PAGE_SIZE = 15;
+let incPage=0, incSortCol='date', incSortDir='desc';
+let spPage=0,  spSortCol='date',  spSortDir='desc';
+
+function panelSort(panel, col){
+  if(panel==='income'){
+    if(incSortCol===col) incSortDir=incSortDir==='asc'?'desc':'asc';
+    else { incSortCol=col; incSortDir=col==='amt'?'desc':'asc'; }
+    incPage=0;
+    renderIncomPanel();
+  } else {
+    if(spSortCol===col) spSortDir=spSortDir==='asc'?'desc':'asc';
+    else { spSortCol=col; spSortDir=col==='amt'?'desc':'asc'; }
+    spPage=0;
+    renderSpendPanel();
+  }
+}
+
+function sortEntries(entries, col, dir){
+  return [...entries].sort((a,b)=>{
+    let va, vb;
+    if(col==='amt')    { va=a.amt||0;    vb=b.amt||0; }
+    else if(col==='date'){ va=a.date||''; vb=b.date||''; }
+    else if(col==='src') { va=(a.src||'').toLowerCase(); vb=(b.src||'').toLowerCase(); }
+    else if(col==='cat') { va=(a.cat||'').toLowerCase(); vb=(b.cat||'').toLowerCase(); }
+    else { va=a[col]||''; vb=b[col]||''; }
+    const cmp=va<vb?-1:va>vb?1:0;
+    return dir==='asc'?cmp:-cmp;
+  });
+}
+
+function updateSortArrows(panel, col, dir){
+  const prefix=panel==='income'?'incSort':'spSort';
+  ['Src','Cat','Date','Amt'].forEach(c=>{
+    const colKey=c.toLowerCase();
+    const el=$id(prefix+c+'Arrow');
+    if(el) el.textContent=col===colKey?(dir==='asc'?'↑':'↓'):'';
+  });
+}
+
+function makePagination(elId, page, total, onPrev, onNext){
+  const el=$id(elId);
+  if(!el) return;
+  const totalPages=Math.ceil(total/PANEL_PAGE_SIZE);
+  if(totalPages<=1){ el.innerHTML=''; return; }
+  const from=page*PANEL_PAGE_SIZE+1;
+  const to=Math.min((page+1)*PANEL_PAGE_SIZE, total);
+  el.innerHTML=`
+    <button onclick="${onPrev}" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;font-size:10px;" ${page===0?'disabled style="opacity:.35;cursor:default;"':''}>←</button>
+    <span>${from}–${to} of ${total}</span>
+    <button onclick="${onNext}" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);padding:2px 8px;cursor:pointer;font-family:'DM Mono',monospace;font-size:10px;" ${page>=totalPages-1?'disabled style="opacity:.35;cursor:default;"':''}>→</button>`;
+}
+
 function renderIncomPanel(){
   const rows=$id('incomeRows'); rows.innerHTML='';
-  const month=getMonth(activeMonth);
   const incEntries=viewMode==='payperiod'&&activePeriod
     ?getEntriesInPeriod(activePeriod,'income')
     :getEffectiveEntries(activeMonth,'income');
-  incEntries.forEach(r=>{
+
+  updateSortArrows('income', incSortCol, incSortDir);
+  const sorted=sortEntries(incEntries, incSortCol, incSortDir);
+  const total=sorted.length;
+  const page=sorted.slice(incPage*PANEL_PAGE_SIZE, (incPage+1)*PANEL_PAGE_SIZE);
+
+  page.forEach(r=>{
     const row=document.createElement('div'); row.className='cat-row';
-    const incDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''; const incRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':''; const incExcludeBadge=r.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;" title="Excluded from totals">excl</span>':'';
+    const incDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
+    const incRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
+    const incExcludeBadge=r.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;" title="Excluded from totals">excl</span>':'';
     row.innerHTML=`<div class="cat-icon">💰</div>
       <div class="cat-name">${esc(r.src)}${incRepeatBadge}${incExcludeBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${incDateStr}</span></div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${r.exclude?'var(--muted)':'var(--green)'};cursor:pointer;opacity:${r.exclude?0.6:1};" onclick='editIncome("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
+
   if(!incEntries.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No income added yet. Tap + to add.</div>';
   }
+  makePagination('incPagination', incPage, total, 'incPrevPage()', 'incNextPage()');
   $id('incomeTotal').textContent=fmt(viewMode==='payperiod'&&activePeriod?totalIncomeForPeriod(activePeriod):totalIncomeEff(activeMonth));
 }
 
+function incPrevPage(){ if(incPage>0){ incPage--; renderIncomPanel(); } }
+function incNextPage(){ incPage++; renderIncomPanel(); }
+
 function renderSpendPanel(){
   const rows=$id('catRows'); rows.innerHTML='';
-  const month=getMonth(activeMonth);
   const spEntries=viewMode==='payperiod'&&activePeriod
     ?getEntriesInPeriod(activePeriod,'spending')
     :getEffectiveEntries(activeMonth,'spending');
-  spEntries.forEach(r=>{
+
+  updateSortArrows('spend', spSortCol, spSortDir);
+  const sorted=sortEntries(spEntries, spSortCol, spSortDir);
+  const total=sorted.length;
+  const page=sorted.slice(spPage*PANEL_PAGE_SIZE, (spPage+1)*PANEL_PAGE_SIZE);
+
+  page.forEach(r=>{
     const row=document.createElement('div'); row.className='cat-row';
     const icon=r.cat?r.cat.split(' ')[0]:'🔮';
     const name=r.src||(r.cat?r.cat.split(' ').slice(1).join(' '):'');
-    const catDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''; const catRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':''; const catExcludeBadge=r.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;" title="Excluded from totals">excl</span>':'';
+    const catDateStr=r.date?new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
+    const catRepeatBadge=r.generated||r.templateId?'<span style="font-size:9px;background:rgba(201,168,76,.15);color:var(--gold);border-radius:4px;padding:1px 5px;margin-left:5px;font-family:DM Mono,monospace;">↻</span>':'';
+    const catExcludeBadge=r.exclude?'<span style="font-size:9px;background:rgba(92,158,224,.15);color:var(--blue);border-radius:4px;padding:1px 5px;margin-left:3px;font-family:DM Mono,monospace;" title="Excluded from totals">excl</span>':'';
     row.innerHTML=`<div class="cat-icon">${icon}</div>
       <div class="cat-name">${esc(name)}${catRepeatBadge}${catExcludeBadge}<span style="font-size:10px;color:var(--muted);margin-left:6px;font-family:'DM Mono',monospace;">${catDateStr}</span></div>
       <div style="font-family:'DM Mono',monospace;font-size:13px;color:${r.exclude?'var(--muted)':'var(--red)'};cursor:pointer;opacity:${r.exclude?0.6:1};" onclick='editCat("${r.id}")'>${fmt(r.amt)}</div>`;
     rows.appendChild(row);
   });
+
   if(!spEntries.length){
     rows.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px 0;">No spending added yet. Tap + to add.</div>';
   }
+  makePagination('spPagination', spPage, total, 'spPrevPage()', 'spNextPage()');
   $id('spendTotal').textContent=fmt(viewMode==='payperiod'&&activePeriod?totalSpendingForPeriod(activePeriod):totalSpendingEff(activeMonth));
 }
+
+function spPrevPage(){ if(spPage>0){ spPage--; renderSpendPanel(); } }
+function spNextPage(){ spPage++; renderSpendPanel(); }
 
 function renderYearTable(){
   const tbl=$id('yearTable');
