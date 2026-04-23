@@ -3826,44 +3826,6 @@ const BANK_CONFIGS = {
       'Transfers':    '🔮 Other',
       'General':      '🔮 Other',
     }
-  },
-  amex: {
-    name: 'Amex',
-    fileType: 'xlsx',
-    headerRow: 6,      // 0-based index of header row (row 7 in 1-based)
-    dataStartRow: 7,   // 0-based index of first data row (row 8 in 1-based)
-    columns: {
-      date:    { index:0, label:'Date',        ledgerField:'Date' },
-      desc:    { index:1, label:'Description', ledgerField:'Description (used as Source)' },
-      amt:     { index:2, label:'Amount',      ledgerField:'Amount (positive=spending, negative=income)' },
-      cat:     { index:10,label:'Category',    ledgerField:'Category (auto-mapped)' },
-    },
-    catMap: {
-      'General Purchases-Groceries':            '🍔 Food',
-      'Entertainment-Restaurants':              '🍔 Food',
-      'Entertainment-Bars & Cafés':             '🍔 Food',
-      'Travel-Airline':                         '✈️ Holidays',
-      'Travel-Other Travel':                    '🚗 Transport',
-      'Travel-Travel Agencies':                 '✈️ Holidays',
-      'Entertainment-General Events':           '🎮 Entertainment',
-      'Entertainment-Theatrical Events':        '🎮 Entertainment',
-      'Entertainment-Other Entertainment':      '🎮 Entertainment',
-      'General Purchases-Clothing Stores':      '🛒 Shopping',
-      'General Purchases-Department Stores':    '🛒 Shopping',
-      'General Purchases-General Retail':       '🛒 Shopping',
-      'General Purchases-Online Purchases':     '🛒 Shopping',
-      'General Purchases-Mail Order':           '🛒 Shopping',
-      'General Purchases-Sporting Goods Stores':'🛒 Shopping',
-      'General Purchases-Furnishing':           '🛒 Shopping',
-      'General Purchases-Computer Supplies':    '🛒 Shopping',
-      'General Purchases-Pharmacies':           '💊 Health',
-      'General Purchases-Parking Charges':      '🚗 Transport',
-      'Communications-Internet Communication':  '💡 Utilities',
-      'Business Services-Conferences & Training':'🔮 Other',
-      'Business Services-Professional Services': '🔮 Other',
-      'General Purchases-Government Services':  '🔮 Other',
-      'Miscellaneous-Education':                '🎓 Education',
-    }
   }
 };
 
