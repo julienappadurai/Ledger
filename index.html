@@ -140,7 +140,7 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .src-badge.santander{background:rgba(236,0,0,.1);border-color:rgba(236,0,0,.25);color:#ec0000;}
 .src-badge.monzo{background:rgba(255,100,50,.1);border-color:rgba(255,100,50,.25);color:#ff6432;}
 .src-badge.excel{background:rgba(33,115,70,.1);border-color:rgba(33,115,70,.25);color:#217346;}
-.src-badge.manual{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.2);color:var(--gold);}
+.src-badge.amex{background:rgba(0,112,240,.1);border-color:rgba(0,112,240,.25);color:#0070f0;}
 
 /* ── INVESTMENT TRACKER ── */
 .inv-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
@@ -668,9 +668,13 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
           <div class="bank-card-icon">🔴</div>
           <div class="bank-card-name">Monzo</div>
         </div>
-        <div class="bank-card" style="opacity:.4;cursor:not-allowed;" title="Coming soon">
-          <div class="bank-card-icon">🏛️</div>
-          <div class="bank-card-name">Barclays<br><span style="font-size:9px;color:var(--muted);">Coming soon</span></div>
+        <div class="bank-card" id="bankCardAmex" onclick="selectBank('amex')">
+          <div class="bank-card-icon">💳</div>
+          <div class="bank-card-name">Amex</div>
+        </div>
+        <div class="bank-card" id="bankCardAmex" onclick="selectBank('amex')">
+          <div class="bank-card-icon">💳</div>
+          <div class="bank-card-name">Amex</div>
         </div>
         <div class="bank-card" style="opacity:.4;cursor:not-allowed;" title="Coming soon">
           <div class="bank-card-icon">🏴󠁧󠁢󠁥󠁮󠁧󠁿</div>
@@ -1148,20 +1152,20 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
 let D = { months:{}, settings:{ name:'', goal:2000, accounts:[] }, templates:[], deleted:[], subscriptions:[], investments:[] };
 let editingIncome=null, editingCat=null;
 
-const NOW  = new Date();
-const CUR  = key(NOW);
-
 function key(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function label(k){ const [y,m]=k.split('-'); return new Date(+y,+m-1,1).toLocaleString('en-GB',{month:'short',year:'2-digit'}); }
-function importSrcBadge(importSrc){
-  if(!importSrc) return '';
-  const cls=importSrc==='Manual'?'manual':importSrc==='Santander'?'santander':importSrc==='Monzo'?'monzo':importSrc==='Excel Import'?'excel':'';
-  return `<span class="src-badge ${cls}">${esc(importSrc)}</span>`;
-}
 function fmt(n){ const a=Math.abs(n).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}); return (n<0?'−':'')+'£'+a; }
 function fmtSign(n){ const a=Math.abs(n).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}); return (n>=0?'+':'−')+'£'+a; }
 function $id(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function importSrcBadge(importSrc){
+  if(!importSrc) return '';
+  const cls=importSrc==='Manual'?'manual':importSrc==='Santander'?'santander':importSrc==='Monzo'?'monzo':importSrc==='Excel Import'?'excel':importSrc==='Amex'?'amex':'';
+  return `<span class="src-badge ${cls}">${esc(importSrc)}</span>`;
+}
+
+const NOW  = new Date();
+const CUR  = key(NOW);
 
 // ── THEME ──
 function toggleTheme(){
@@ -3763,6 +3767,43 @@ const BANK_CONFIGS = {
       balance:  { index:7, label:'Balance',     ledgerField:'(not imported)' },
     }
   },
+  amex: {
+    name: 'Amex',
+    fileType: 'xlsx',
+    dataStartRow: 7,  // 0-based: rows 0-5 = metadata, row 6 = headers, row 7+ = data
+    columns: {
+      date:    { index:0,  label:'Date',        ledgerField:'Date' },
+      desc:    { index:1,  label:'Description', ledgerField:'Description (used as Source)' },
+      amount:  { index:2,  label:'Amount',      ledgerField:'Amount (+ = spending, − = refund/income)' },
+      cat:     { index:10, label:'Category',    ledgerField:'Category (auto-mapped)' },
+    },
+    catMap: {
+      'General Purchases-Groceries':             '🍔 Food',
+      'Entertainment-Restaurants':               '🍔 Food',
+      'Entertainment-Bars & Cafés':              '🍔 Food',
+      'Travel-Airline':                          '✈️ Holidays',
+      'Travel-Other Travel':                     '🚗 Transport',
+      'Travel-Travel Agencies':                  '✈️ Holidays',
+      'Entertainment-General Events':            '🎮 Entertainment',
+      'Entertainment-Theatrical Events':         '🎮 Entertainment',
+      'Entertainment-Other Entertainment':       '🎮 Entertainment',
+      'General Purchases-Clothing Stores':       '🛒 Shopping',
+      'General Purchases-Department Stores':     '🛒 Shopping',
+      'General Purchases-General Retail':        '🛒 Shopping',
+      'General Purchases-Online Purchases':      '🛒 Shopping',
+      'General Purchases-Mail Order':            '🛒 Shopping',
+      'General Purchases-Sporting Goods Stores': '🛒 Shopping',
+      'General Purchases-Furnishing':            '🛒 Shopping',
+      'General Purchases-Computer Supplies':     '🛒 Shopping',
+      'General Purchases-Pharmacies':            '💊 Health',
+      'General Purchases-Parking Charges':       '🚗 Transport',
+      'Communications-Internet Communication':   '💡 Utilities',
+      'Business Services-Conferences & Training':'🔮 Other',
+      'Business Services-Professional Services': '🔮 Other',
+      'General Purchases-Government Services':   '🔮 Other',
+      'Miscellaneous-Education':                 '🎓 Education',
+    }
+  },
   monzo: {
     name: 'Monzo',
     fileType: 'csv',
@@ -3784,6 +3825,44 @@ const BANK_CONFIGS = {
       'Income':       '💼 Income',
       'Transfers':    '🔮 Other',
       'General':      '🔮 Other',
+    }
+  },
+  amex: {
+    name: 'Amex',
+    fileType: 'xlsx',
+    headerRow: 6,      // 0-based index of header row (row 7 in 1-based)
+    dataStartRow: 7,   // 0-based index of first data row (row 8 in 1-based)
+    columns: {
+      date:    { index:0, label:'Date',        ledgerField:'Date' },
+      desc:    { index:1, label:'Description', ledgerField:'Description (used as Source)' },
+      amt:     { index:2, label:'Amount',      ledgerField:'Amount (positive=spending, negative=income)' },
+      cat:     { index:10,label:'Category',    ledgerField:'Category (auto-mapped)' },
+    },
+    catMap: {
+      'General Purchases-Groceries':            '🍔 Food',
+      'Entertainment-Restaurants':              '🍔 Food',
+      'Entertainment-Bars & Cafés':             '🍔 Food',
+      'Travel-Airline':                         '✈️ Holidays',
+      'Travel-Other Travel':                    '🚗 Transport',
+      'Travel-Travel Agencies':                 '✈️ Holidays',
+      'Entertainment-General Events':           '🎮 Entertainment',
+      'Entertainment-Theatrical Events':        '🎮 Entertainment',
+      'Entertainment-Other Entertainment':      '🎮 Entertainment',
+      'General Purchases-Clothing Stores':      '🛒 Shopping',
+      'General Purchases-Department Stores':    '🛒 Shopping',
+      'General Purchases-General Retail':       '🛒 Shopping',
+      'General Purchases-Online Purchases':     '🛒 Shopping',
+      'General Purchases-Mail Order':           '🛒 Shopping',
+      'General Purchases-Sporting Goods Stores':'🛒 Shopping',
+      'General Purchases-Furnishing':           '🛒 Shopping',
+      'General Purchases-Computer Supplies':    '🛒 Shopping',
+      'General Purchases-Pharmacies':           '💊 Health',
+      'General Purchases-Parking Charges':      '🚗 Transport',
+      'Communications-Internet Communication':  '💡 Utilities',
+      'Business Services-Conferences & Training':'🔮 Other',
+      'Business Services-Professional Services': '🔮 Other',
+      'General Purchases-Government Services':  '🔮 Other',
+      'Miscellaneous-Education':                '🎓 Education',
     }
   }
 };
@@ -3833,8 +3912,15 @@ function biHandleFile(file){
     $id('biStep2Next').style.display='';
   }
 
-  if(config.fileType==='csv'){
-    // CSV: read as utf-8
+  if(config.fileType==='xlsx'){
+    const r=new FileReader();
+    r.onload=function(e){
+      try{ tryParse(e.target.result); }
+      catch(err){ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ ${esc(err.message)}</span>`; }
+    };
+    r.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
+    r.readAsArrayBuffer(file);
+  } else if(config.fileType==='csv'){
     const r=new FileReader();
     r.onload=function(e){
       try{ tryParse(e.target.result); }
@@ -3843,7 +3929,7 @@ function biHandleFile(file){
     r.onerror=()=>{ $id('biFileStatus').innerHTML=`<span style="color:var(--red);">✗ Could not read file</span>`; };
     r.readAsText(file,'utf-8');
   } else {
-    // XLS-HTML: try iso-8859-1 first, then utf-8, then ArrayBuffer
+    // XLS-HTML: try iso-8859-1, utf-8, ArrayBuffer
     const r1=new FileReader();
     r1.onload=function(e){
       try{ tryParse(e.target.result); }
@@ -3890,16 +3976,14 @@ async function biPickFromDrive(){
 
 async function biPickFromDrive(){
   if(!driveReady||!folderId){ alert('Connect to Google Drive first (wait for sync to complete).'); return; }
-  // List XLS files from Drive root and Finance Tracker folder
   $id('biFileStatus').textContent='Searching Drive…';
   try{
     const r=await gapi.client.drive.files.list({
-      q:`(mimeType='application/vnd.ms-excel' or name contains '.xls') and trashed=false`,
-      fields:'files(id,name,mimeType)',spaces:'drive',pageSize:20
+      q:`(mimeType='application/vnd.ms-excel' or mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType='text/csv' or name contains '.xls' or name contains '.xlsx' or name contains '.csv') and trashed=false`,
+      fields:'files(id,name,mimeType)',spaces:'drive',pageSize:30
     });
     const files=r.result.files||[];
-    if(!files.length){ $id('biFileStatus').textContent='No XLS files found in Drive.'; return; }
-    // Show simple picker
+    if(!files.length){ $id('biFileStatus').textContent='No bank statement files found in Drive.'; return; }
     const chosen=await biShowDrivePicker(files);
     if(!chosen) return;
     $id('biFileStatus').textContent='Downloading '+chosen.name+'…';
@@ -3941,7 +4025,48 @@ function biParseFile(content, bank){
   const config=BANK_CONFIGS[bank];
   if(config.fileType==='xls-html') return biParseSantanderHTML(content, config);
   if(config.fileType==='csv')      return biParseMonzoCSV(content, config);
+  if(config.fileType==='xlsx')     return biParseAmexXLSX(content, config);
   throw new Error('Unknown file type: '+config.fileType);
+}
+
+// ── AMEX XLSX PARSER ──
+function biParseAmexXLSX(arrayBuffer, config){
+  if(!window.XLSX) throw new Error('XLSX library not loaded');
+  const wb=XLSX.read(arrayBuffer,{type:'array',cellDates:false});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  if(rows.length<config.dataStartRow) throw new Error('File appears empty or in wrong format');
+
+  const cols=config.columns;
+  const transactions=[];
+  for(let i=config.dataStartRow;i<rows.length;i++){
+    const row=rows[i];
+    if(!row||!row[cols.date.index]) continue;
+    const dateRaw=String(row[cols.date.index]||'').trim();
+    const desc=String(row[cols.desc.index]||'').trim();
+    const amtRaw=row[cols.amount.index];
+    const catRaw=String(row[cols.cat.index]||'').trim();
+
+    // Parse date DD/MM/YYYY
+    const date=biParseDate(dateRaw);
+    if(!date) continue;
+
+    // Parse amount
+    const amt=parseFloat(String(amtRaw).replace(/[^\d.\-]/g,''));
+    if(isNaN(amt)||amt===0) continue;
+
+    const cat=config.catMap[catRaw]||'🔮 Other';
+
+    if(amt>0){
+      // Positive = charge = spending
+      transactions.push({type:'spending',date,desc,amount:amt,cat,include:true,duplicate:false,id:'bi_'+Date.now()+'_'+i});
+    } else {
+      // Negative = payment received / refund = income
+      transactions.push({type:'income',date,desc,amount:Math.abs(amt),cat:'🔮 Other',include:true,duplicate:false,id:'bi_'+Date.now()+'_'+i});
+    }
+  }
+  if(!transactions.length) throw new Error('No transactions found — check this is an Amex activity export (.xlsx)');
+  return transactions;
 }
 
 // ── CSV HELPER ──
@@ -4187,6 +4312,13 @@ function biRenderMapping(){
       {col:cols.moneyIn, examples:examples.map(e=>e.type==='income'?'£'+e.amount.toFixed(2):'—')},
       {col:cols.moneyOut,examples:examples.map(e=>e.type==='spending'?'£'+e.amount.toFixed(2):'—')},
       {col:cols.balance, examples:['(skipped)','(skipped)','(skipped)']},
+    );
+  } else if(config.fileType==='xlsx'){
+    mappings.push(
+      {col:cols.date,   examples:examples.map(e=>e.date)},
+      {col:cols.desc,   examples:examples.map(e=>e.desc.slice(0,35)+(e.desc.length>35?'…':''))},
+      {col:cols.amount, examples:examples.map(e=>(e.type==='income'?'−':'+')+fmt(e.amount))},
+      {col:cols.cat,    examples:examples.map(e=>e.cat)},
     );
   } else {
     mappings.push(
