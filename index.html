@@ -459,11 +459,28 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
       <button class="hbtn" onclick="openAddInvestmentAccount()" style="color:var(--gold);border-color:rgba(201,168,76,.3);">+ Add Account</button>
     </div>
     <div class="inv-summary" id="invSummary"></div>
-    <div class="chart-wrap" style="margin-bottom:20px;display:none;" id="invChartWrap">
+
+    <!-- Chart 1: Portfolio value over time -->
+    <div class="chart-wrap" style="margin-bottom:16px;display:none;" id="invChartWrap">
       <div class="chart-title">Portfolio Value Over Time</div>
       <div id="invChart" style="position:relative;height:160px;"></div>
-      <div id="invLegend" class="legend" style="margin-top:12px;"></div>
     </div>
+
+    <!-- Chart 2: Gain/Loss % over time -->
+    <div class="chart-wrap" style="margin-bottom:16px;display:none;" id="invGLChartWrap">
+      <div class="chart-title">Gain / Loss % Over Time</div>
+      <div id="invGLChart" style="position:relative;height:140px;"></div>
+    </div>
+
+    <!-- Chart 3: Allocation donut -->
+    <div class="chart-wrap" style="margin-bottom:20px;display:none;" id="invDonutWrap">
+      <div class="chart-title">Allocation by Account Type</div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;padding:8px 0;">
+        <svg id="invDonut" width="140" height="140" viewBox="0 0 140 140"></svg>
+        <div id="invDonutLegend" style="font-size:12px;"></div>
+      </div>
+    </div>
+
     <div id="invList"></div>
   </div>
 
@@ -4657,10 +4674,22 @@ function renderInvestments(){
     </div>`;
 
   const dates=invAllDates();
-  const chartWrap=$id('invChartWrap');
-  if(dates.length>=2){ chartWrap.style.display=''; renderInvChart(accs,dates); }
-  else { chartWrap.style.display='none'; }
+  const hasChartData=dates.length>=2;
 
+  // Chart 1: Portfolio value
+  $id('invChartWrap').style.display=hasChartData?'':'none';
+  if(hasChartData) renderInvLineChart(accs,dates);
+
+  // Chart 2: Gain/Loss %
+  $id('invGLChartWrap').style.display=hasChartData?'':'none';
+  if(hasChartData) renderInvGLChart(accs,dates);
+
+  // Chart 3: Allocation donut
+  const hasAccs=accs.some(a=>invLatest(a.valueHistory));
+  $id('invDonutWrap').style.display=hasAccs?'':'none';
+  if(hasAccs) renderInvDonut(accs);
+
+  // Account list
   const listEl=$id('invList');
   if(!accs.length){ listEl.innerHTML='<div class="inv-empty">No investment accounts yet.<br>Tap + Add Account to get started.</div>'; return; }
   listEl.innerHTML='';
@@ -4717,55 +4746,151 @@ function renderInvestments(){
   });
 }
 
-function renderInvChart(accs,dates){
-  const chartEl=$id('invChart'); chartEl.innerHTML='';
-  const COLORS=['var(--gold)','var(--blue)','var(--green)','var(--red)','#a78bfa','#f97316','#06b6d4'];
-  const totalSeries=dates.map(d=>invPortfolioAt(d));
-  const accSeries=accs.map((a,i)=>({ name:a.name, color:COLORS[(i+1)%COLORS.length],
-    values:dates.map(d=>{ const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date)); return e.length?e[0].value:0; }) }));
-  const allVals=[...totalSeries,...accSeries.flatMap(s=>s.values)];
-  const minVal=Math.min(...allVals),maxVal=Math.max(...allVals),range=maxVal-minVal||1;
-  const VW=500,VH=140,PAD_L=44,PAD_R=10,PAD_T=10,PAD_B=25;
-  const plotW=VW-PAD_L-PAD_R,plotH=VH-PAD_T-PAD_B;
+// ── CHART 1: Portfolio value line chart ──
+function renderInvLineChart(accs,dates){
+  const el=$id('invChart'); el.innerHTML='';
+  const values=dates.map(d=>accs.reduce((sum,a)=>{
+    const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));
+    return sum+(e.length?e[0].value:0);
+  },0));
+  invDrawSVGLine(el, dates, values, 'var(--gold)', 160, true);
+}
+
+// ── CHART 2: Gain/Loss % line chart ──
+function renderInvGLChart(accs,dates){
+  const el=$id('invGLChart'); el.innerHTML='';
+  const pcts=dates.map(d=>{
+    const val=accs.reduce((sum,a)=>{const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));return sum+(e.length?e[0].value:0);},0);
+    const inv=accs.reduce((sum,a)=>{const e=(a.investedHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));return sum+(e.length?e[0].amount:0);},0);
+    return inv>0?((val-inv)/inv*100):0;
+  });
+  const color=pcts[pcts.length-1]>=0?'var(--green)':'var(--red)';
+  invDrawSVGLine(el, dates, pcts, color, 140, false, true);
+}
+
+// ── SVG LINE CHART HELPER ──
+function invDrawSVGLine(el, dates, values, color, height, showPound, isPercent){
+  const VW=500,PAD_L=46,PAD_R=10,PAD_T=12,PAD_B=24;
+  const plotW=VW-PAD_L-PAD_R, plotH=height-PAD_T-PAD_B;
+  const minV=Math.min(...values), maxV=Math.max(...values);
+  const range=maxV-minV||1;
   const toX=i=>PAD_L+(i/(dates.length-1||1))*plotW;
-  const toY=v=>PAD_T+plotH-((v-minVal)/range*plotH);
+  const toY=v=>PAD_T+plotH-((v-minV)/range*plotH);
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  svg.setAttribute('viewBox',`0 0 ${VW} ${VH+PAD_B}`);
-  svg.setAttribute('width','100%'); svg.setAttribute('height','170');
+  svg.setAttribute('viewBox',`0 0 ${VW} ${height}`);
+  svg.setAttribute('width','100%'); svg.setAttribute('height',String(height));
   svg.setAttribute('preserveAspectRatio','none'); svg.style.display='block';
-  const drawLine=(values,color,width)=>{
-    const pts=values.map((v,i)=>({x:toX(i),y:toY(v)}));
-    const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
-    line.setAttribute('points',pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
-    line.setAttribute('fill','none'); line.setAttribute('stroke',color);
-    line.setAttribute('stroke-width',width); line.setAttribute('stroke-linejoin','round');
-    line.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(line);
-    pts.forEach(p=>{ const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-      c.setAttribute('cx',p.x.toFixed(1)); c.setAttribute('cy',p.y.toFixed(1));
-      c.setAttribute('r',4); c.setAttribute('fill',color);
-      c.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(c); });
-  };
-  accSeries.forEach(s=>drawLine(s.values,s.color,1.5));
-  drawLine(totalSeries,'var(--gold)',2.5);
+
+  // Zero line for % chart
+  if(isPercent&&minV<0&&maxV>0){
+    const y=toY(0);
+    const zl=document.createElementNS('http://www.w3.org/2000/svg','line');
+    zl.setAttribute('x1',PAD_L); zl.setAttribute('x2',VW-PAD_R);
+    zl.setAttribute('y1',y); zl.setAttribute('y2',y);
+    zl.setAttribute('stroke','var(--border)'); zl.setAttribute('stroke-dasharray','4,3');
+    zl.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(zl);
+  }
+
+  // Area fill
+  const pts=values.map((v,i)=>({x:toX(i),y:toY(v)}));
+  const areaPath=`M${pts[0].x},${toY(isPercent?Math.max(minV,0):minV)} `+pts.map(p=>`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')+` L${pts[pts.length-1].x},${toY(isPercent?Math.max(minV,0):minV)} Z`;
+  const area=document.createElementNS('http://www.w3.org/2000/svg','path');
+  area.setAttribute('d',areaPath); area.setAttribute('fill',color); area.setAttribute('opacity','0.08'); svg.appendChild(area);
+
+  // Line
+  const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+  line.setAttribute('points',pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
+  line.setAttribute('fill','none'); line.setAttribute('stroke',color);
+  line.setAttribute('stroke-width','2.5'); line.setAttribute('stroke-linejoin','round');
+  line.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(line);
+
+  // Dots
+  pts.forEach(p=>{
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',p.x.toFixed(1)); c.setAttribute('cy',p.y.toFixed(1));
+    c.setAttribute('r','4'); c.setAttribute('fill',color);
+    c.setAttribute('vector-effect','non-scaling-stroke'); svg.appendChild(c);
+  });
+
+  // X labels
   dates.forEach((d,i)=>{
     const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
-    lbl.setAttribute('x',toX(i).toFixed(1)); lbl.setAttribute('y',(VH+PAD_B-4).toString());
-    lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('font-size','11');
-    lbl.setAttribute('fill','#7a7870'); lbl.setAttribute('font-family','DM Mono, monospace');
+    lbl.setAttribute('x',toX(i).toFixed(1)); lbl.setAttribute('y',String(height-4));
+    lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('font-size','10');
+    lbl.setAttribute('fill','var(--muted)'); lbl.setAttribute('font-family','DM Mono, monospace');
     lbl.textContent=new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
     svg.appendChild(lbl);
   });
-  [[minVal,VH-PAD_B+2],[maxVal,PAD_T+8]].forEach(([v,y])=>{
+
+  // Y labels
+  [[minV,height-PAD_B+2],[maxV,PAD_T+8]].forEach(([v,y])=>{
     const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
-    lbl.setAttribute('x','2'); lbl.setAttribute('y',y.toString());
-    lbl.setAttribute('font-size','11'); lbl.setAttribute('fill','#7a7870');
+    lbl.setAttribute('x','2'); lbl.setAttribute('y',String(y));
+    lbl.setAttribute('font-size','10'); lbl.setAttribute('fill','var(--muted)');
     lbl.setAttribute('font-family','DM Mono, monospace');
-    lbl.textContent='£'+Math.round(v/1000)+'k'; svg.appendChild(lbl);
+    lbl.textContent=isPercent?(v>=0?'+':'')+v.toFixed(1)+'%':(showPound?'£'+Math.round(Math.abs(v)/1000)+'k':v.toFixed(1)+'%');
+    svg.appendChild(lbl);
   });
-  chartEl.appendChild(svg);
-  const legEl=$id('invLegend'); legEl.innerHTML='';
-  [{name:'Total Portfolio',color:'var(--gold)'},...accSeries].forEach(s=>{
-    legEl.innerHTML+=`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div>${esc(s.name)}</div>`;
+  el.appendChild(svg);
+}
+
+// ── CHART 3: Allocation donut ──
+function renderInvDonut(accs){
+  const COLORS=['var(--gold)','var(--blue)','var(--green)','var(--red)','#a78bfa','#f97316','#06b6d4','#ec4899'];
+  // Group by type
+  const byType={};
+  accs.forEach(a=>{
+    const v=invLatest(a.valueHistory);
+    if(!v) return;
+    byType[a.type]=(byType[a.type]||0)+v.value;
+  });
+  const entries=Object.entries(byType).sort((a,b)=>b[1]-a[1]);
+  const total=entries.reduce((s,[,v])=>s+v,0);
+  if(!total) return;
+
+  const svg=$id('invDonut'); svg.innerHTML='';
+  const cx=70,cy=70,r=52,inner=32;
+  let angle=-Math.PI/2;
+
+  entries.forEach(([type,val],i)=>{
+    const slice=(val/total)*2*Math.PI;
+    const x1=cx+r*Math.cos(angle), y1=cy+r*Math.sin(angle);
+    const x2=cx+r*Math.cos(angle+slice), y2=cy+r*Math.sin(angle+slice);
+    const xi1=cx+inner*Math.cos(angle), yi1=cy+inner*Math.sin(angle);
+    const xi2=cx+inner*Math.cos(angle+slice), yi2=cy+inner*Math.sin(angle+slice);
+    const large=slice>Math.PI?1:0;
+    const color=COLORS[i%COLORS.length];
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${inner},${inner} 0 ${large},0 ${xi1.toFixed(1)},${yi1.toFixed(1)} Z`);
+    path.setAttribute('fill',color); path.setAttribute('opacity','0.9');
+    svg.appendChild(path);
+    angle+=slice;
+  });
+
+  // Centre total
+  const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+  t.setAttribute('x','70'); t.setAttribute('y','66');
+  t.setAttribute('text-anchor','middle'); t.setAttribute('font-size','11');
+  t.setAttribute('fill','var(--muted)'); t.setAttribute('font-family','DM Mono, monospace');
+  t.textContent='Total'; svg.appendChild(t);
+  const t2=document.createElementNS('http://www.w3.org/2000/svg','text');
+  t2.setAttribute('x','70'); t2.setAttribute('y','80');
+  t2.setAttribute('text-anchor','middle'); t2.setAttribute('font-size','12');
+  t2.setAttribute('fill','var(--text)'); t2.setAttribute('font-weight','bold');
+  t2.setAttribute('font-family','DM Mono, monospace');
+  t2.textContent='£'+Math.round(total/1000)+'k'; svg.appendChild(t2);
+
+  // Legend
+  const leg=$id('invDonutLegend'); leg.innerHTML='';
+  entries.forEach(([type,val],i)=>{
+    const pct=(val/total*100).toFixed(1);
+    leg.innerHTML+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:10px;height:10px;border-radius:2px;background:${COLORS[i%COLORS.length]};flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:11px;color:var(--text);">${esc(type)}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;">${fmt(val)} · ${pct}%</div>
+      </div>
+    </div>`;
   });
 }
 
