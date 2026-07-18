@@ -4670,6 +4670,9 @@ function invPortfolioAt(date){
   },0);
 }
 
+// ── GROUP OPEN STATE ── (persists across re-renders within session)
+let invGroupOpen = {};  // key: groupKey, value: boolean
+
 function renderInvestments(){
   const accs=D.investments||[];
   const totalVal=invTotalValue(), totalInv=invTotalInvested();
@@ -4711,58 +4714,126 @@ function renderInvestments(){
 
   // Account list
   const listEl=$id('invList');
-  if(!accs.length){ listEl.innerHTML='<div class="inv-empty">No investment accounts yet.<br>Tap + Add Account to get started.</div>'; return; }
+  if(!accs.length){ listEl.innerHTML='<div class="inv-empty">No accounts yet.<br>Tap + Add Account to get started.</div>'; return; }
   listEl.innerHTML='';
+
+  // Group accounts by type, preserving a sensible order
+  const TYPE_ORDER=['Current Account','Savings Account','Cash ISA','NS&I Bonds',
+    'Stocks & Shares ISA','Stocks & Shares','Crypto','Pension / SIPP','Property','Other'];
+  const groups={};
   accs.forEach(acc=>{
-    const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
-    const gl=invGainLoss(acc), icon=INV_TYPE_ICONS[acc.type]||'🔮';
-    const card=document.createElement('div'); card.className='inv-account';
-    card.innerHTML=`
-      <div class="inv-account-header">
-        <div class="inv-account-icon">${icon}</div>
-        <div class="inv-account-info">
-          <div class="inv-account-name">${esc(acc.name)}</div>
-          <div class="inv-account-meta">${esc(acc.type)}${acc.platform?' · '+esc(acc.platform):''}</div>
-        </div>
-        <button onclick="event.stopPropagation();openEditInvAcc('${acc.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:4px 8px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>
+    const t=acc.type||'Other';
+    if(!groups[t]) groups[t]=[];
+    groups[t].push(acc);
+  });
+
+  // Sort groups by TYPE_ORDER, then alphabetically for unknown types
+  const sortedTypes=Object.keys(groups).sort((a,b)=>{
+    const ai=TYPE_ORDER.indexOf(a), bi=TYPE_ORDER.indexOf(b);
+    if(ai>=0&&bi>=0) return ai-bi;
+    if(ai>=0) return -1; if(bi>=0) return 1;
+    return a.localeCompare(b);
+  });
+
+  sortedTypes.forEach(type=>{
+    const typeAccs=groups[type];
+    const icon=INV_TYPE_ICONS[type]||'🔮';
+    const groupKey='invGroup_'+type.replace(/\W+/g,'_');
+    const isOpen=invGroupOpen[groupKey]||false;
+
+    // Group total value
+    const groupTotal=typeAccs.reduce((sum,a)=>{
+      const v=invLatest(a.valueHistory); return sum+(v?v.value:0);
+    },0);
+
+    // Group header
+    const header=document.createElement('div');
+    header.style.cssText='display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);margin-bottom:4px;cursor:pointer;user-select:none;transition:border-color .15s;';
+    header.onmouseover=()=>header.style.borderColor='var(--gold)';
+    header.onmouseout=()=>header.style.borderColor=isOpen?'var(--gold)':'var(--border)';
+    if(isOpen) header.style.borderColor='var(--gold)';
+    header.innerHTML=`
+      <span style="font-size:18px;flex-shrink:0;">${icon}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:500;color:var(--text);">${esc(type)}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:1px;">${typeAccs.length} account${typeAccs.length!==1?'s':''} · ${fmt(groupTotal)}</div>
       </div>
-      <div class="inv-account-stats">
-        <div class="inv-stat"><div class="inv-stat-label">Current Value</div><div class="inv-stat-val">${latVal?fmt(latVal.value):'—'}</div></div>
-        <div class="inv-stat"><div class="inv-stat-label">Invested</div><div class="inv-stat-val">${latInv?fmt(latInv.amount):'—'}</div></div>
-        <div class="inv-stat"><div class="inv-stat-label">Gain / Loss</div>
-          <div class="inv-stat-val ${gl?(gl.gl>=0?'pos':'neg'):''}">
-            ${gl?fmtSign(gl.gl)+'<div style="font-size:11px;margin-top:2px;font-family:\'DM Mono\',monospace;">'+(gl.pct>=0?'+':'')+gl.pct.toFixed(1)+'%</div>':'—'}
+      <span id="${groupKey}_arrow" style="color:var(--muted);font-size:14px;transition:transform .2s;transform:${isOpen?'rotate(90deg)':'rotate(0deg)'};">›</span>`;
+
+    // Accounts container (hidden when collapsed)
+    const container=document.createElement('div');
+    container.id=groupKey+'_body';
+    container.style.cssText='overflow:hidden;transition:max-height .25s ease;'+( isOpen?'max-height:9999px;':'max-height:0;');
+
+    header.onclick=()=>{
+      const nowOpen=!invGroupOpen[groupKey];
+      invGroupOpen[groupKey]=nowOpen;
+      container.style.maxHeight=nowOpen?'9999px':'0';
+      $id(groupKey+'_arrow').style.transform=nowOpen?'rotate(90deg)':'rotate(0deg)';
+      header.style.borderColor=nowOpen?'var(--gold)':'var(--border)';
+    };
+
+    listEl.appendChild(header);
+    listEl.appendChild(container);
+
+    // Render each account inside container
+    typeAccs.forEach(acc=>{
+      const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
+      const gl=invGainLoss(acc);
+      const card=document.createElement('div');
+      card.className='inv-account';
+      card.style.marginTop='4px';
+      card.innerHTML=`
+        <div class="inv-account-header">
+          <div class="inv-account-icon">${icon}</div>
+          <div class="inv-account-info">
+            <div class="inv-account-name">${esc(acc.name)}</div>
+            <div class="inv-account-meta">${acc.platform?esc(acc.platform):''}${acc.includeInNetWorth===false?' · <span style="color:var(--muted);">excl. net worth</span>':''}</div>
+          </div>
+          <button onclick="event.stopPropagation();openEditInvAcc('${acc.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:4px 8px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>
+        </div>
+        <div class="inv-account-stats">
+          <div class="inv-stat"><div class="inv-stat-label">Balance / Value</div><div class="inv-stat-val">${latVal?fmt(latVal.value):'—'}</div></div>
+          <div class="inv-stat"><div class="inv-stat-label">Invested</div><div class="inv-stat-val">${latInv?fmt(latInv.amount):'—'}</div></div>
+          <div class="inv-stat"><div class="inv-stat-label">Gain / Loss</div>
+            <div class="inv-stat-val ${gl?(gl.gl>=0?'pos':'neg'):''}">
+              ${gl?fmtSign(gl.gl)+'<div style="font-size:11px;margin-top:2px;font-family:\'DM Mono\',monospace;">'+(gl.pct>=0?'+':'')+gl.pct.toFixed(1)+'%</div>':'—'}
+            </div>
           </div>
         </div>
-      </div>
-      ${acc.notes?`<div style="font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">${esc(acc.notes)}</div>`:''}`;
-    card.onclick=()=>openInvSnapshot(acc.id);
-    listEl.appendChild(card);
+        ${acc.notes?`<div style="font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">${esc(acc.notes)}</div>`:''}`;
+      card.onclick=()=>openInvSnapshot(acc.id);
+      container.appendChild(card);
 
-    // History table
-    const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort().reverse();
-    if(allDates.length){
-      const histWrap=document.createElement('div');
-      histWrap.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);border-top:none;padding:12px 16px;margin-bottom:16px;margin-top:-4px;';
-      histWrap.innerHTML=`<table class="year-table" style="width:100%;">
-        <thead><tr><th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Invested</th><th style="text-align:right;">G/L</th><th></th></tr></thead>
-        <tbody>${allDates.map(date=>{
-          const vE=(acc.valueHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
-          const iE=(acc.investedHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
-          const gl=vE&&iE?vE.value-iE.amount:null;
-          const pct=gl!==null&&iE&&iE.amount>0?(gl/iE.amount*100):null;
-          const hasEntry=(acc.valueHistory||[]).some(e=>e.date===date)||(acc.investedHistory||[]).some(e=>e.date===date);
-          return `<tr>
-            <td style="font-family:'DM Mono',monospace;font-size:11px;">${new Date(date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;">${vE?fmt(vE.value):'—'}</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;">${iE?fmt(iE.amount):'—'}</td>
-            <td style="text-align:right;font-family:'DM Mono',monospace;" class="${gl===null?'':gl>=0?'saved-pos':'saved-neg'}">${gl===null?'—':fmtSign(gl)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'')}</td>
-            <td style="text-align:right;">${hasEntry?`<button onclick="openEditInvSnapshot('${acc.id}','${date}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>`:''}</td>
-          </tr>`;
-        }).join('')}</tbody></table>
-      <button onclick="openInvSnapshot('${acc.id}')" style="width:100%;margin-top:10px;padding:8px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Record Snapshot</button>`;
-      listEl.appendChild(histWrap);
-    }
+      // History table
+      const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort().reverse();
+      if(allDates.length){
+        const histWrap=document.createElement('div');
+        histWrap.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);border-top:none;padding:12px 16px;margin-bottom:8px;margin-top:-4px;';
+        histWrap.innerHTML=`<table class="year-table" style="width:100%;">
+          <thead><tr><th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Invested</th><th style="text-align:right;">G/L</th><th></th></tr></thead>
+          <tbody>${allDates.map(date=>{
+            const vE=(acc.valueHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
+            const iE=(acc.investedHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
+            const gl=vE&&iE?vE.value-iE.amount:null;
+            const pct=gl!==null&&iE&&iE.amount>0?(gl/iE.amount*100):null;
+            const hasEntry=(acc.valueHistory||[]).some(e=>e.date===date)||(acc.investedHistory||[]).some(e=>e.date===date);
+            return `<tr>
+              <td style="font-family:'DM Mono',monospace;font-size:11px;">${new Date(date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;">${vE?fmt(vE.value):'—'}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;">${iE?fmt(iE.amount):'—'}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;" class="${gl===null?'':gl>=0?'saved-pos':'saved-neg'}">${gl===null?'—':fmtSign(gl)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'')}</td>
+              <td style="text-align:right;">${hasEntry?`<button onclick="openEditInvSnapshot('${acc.id}','${date}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>`:''}</td>
+            </tr>`;
+          }).join('')}</tbody></table>
+        <button onclick="openInvSnapshot('${acc.id}')" style="width:100%;margin-top:10px;padding:8px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Record Snapshot</button>`;
+        container.appendChild(histWrap);
+      }
+    });
+
+    // Bottom margin for group
+    const spacer=document.createElement('div'); spacer.style.height='8px';
+    listEl.appendChild(spacer);
   });
 }
 
