@@ -339,7 +339,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   <header>
     <div class="mode-dropdown-wrap">
       <button class="mode-dropdown-btn" id="modeDropBtn" onclick="toggleModeDropdown()">
-        <span class="logo-title">Ledger<span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;margin-left:6px;vertical-align:middle;opacity:.7;">v1.0</span></span>
+        <span class="logo-title">Ledger<span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;margin-left:6px;vertical-align:middle;opacity:.7;">v1.0 · 18 Jul 00:41</span></span>
         <span class="logo-sub" id="modeSubLabel">MONTHLY SAVINGS <span class="dd-arrow">▼</span></span>
       </button>
       <div class="mode-dropdown-menu" id="modeDropMenu">
@@ -4780,9 +4780,18 @@ function renderInvestments(){
     typeAccs.forEach(acc=>{
       const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
       const gl=invGainLoss(acc);
+      const histKey='invHist_'+acc.id;
+      const histOpen=invGroupOpen[histKey]||false;
+      const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort().reverse();
+
+      // Outer wrapper — card + history as one unit
+      const wrap=document.createElement('div');
+      wrap.style.cssText='margin-top:4px;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;';
+
+      // Account card (no individual border — outer wrap provides it)
       const card=document.createElement('div');
       card.className='inv-account';
-      card.style.marginTop='4px';
+      card.style.cssText='border:none;border-radius:0;margin:0;';
       card.innerHTML=`
         <div class="inv-account-header">
           <div class="inv-account-icon">${icon}</div>
@@ -4803,32 +4812,67 @@ function renderInvestments(){
         </div>
         ${acc.notes?`<div style="font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">${esc(acc.notes)}</div>`:''}`;
       card.onclick=()=>openInvSnapshot(acc.id);
-      container.appendChild(card);
+      wrap.appendChild(card);
 
-      // History table
-      const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort().reverse();
+      // History toggle bar
+      const toggleBar=document.createElement('div');
+      toggleBar.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--border);background:var(--s2);cursor:pointer;user-select:none;';
+      toggleBar.innerHTML=`
+        <span style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">
+          History <span style="opacity:.6;">(${allDates.length} snapshot${allDates.length!==1?'s':''})</span>
+        </span>
+        <span id="${histKey}_arrow" style="color:var(--muted);font-size:13px;transition:transform .2s;transform:${histOpen?'rotate(90deg)':'rotate(0deg)'};">›</span>`;
+
+      // History body
+      const histBody=document.createElement('div');
+      histBody.id=histKey+'_body';
+      histBody.style.cssText='overflow:hidden;transition:max-height .25s ease;max-height:'+(histOpen?'9999px':'0')+';';
+
+      toggleBar.onclick=(e)=>{
+        e.stopPropagation();
+        const nowOpen=!invGroupOpen[histKey];
+        invGroupOpen[histKey]=nowOpen;
+        histBody.style.maxHeight=nowOpen?'9999px':'0';
+        $id(histKey+'_arrow').style.transform=nowOpen?'rotate(90deg)':'rotate(0deg)';
+      };
+
+      wrap.appendChild(toggleBar);
+      wrap.appendChild(histBody);
+
+      // History content
+      const histContent=document.createElement('div');
+      histContent.style.cssText='padding:12px 14px;border-top:1px solid var(--border);background:var(--s1);';
       if(allDates.length){
-        const histWrap=document.createElement('div');
-        histWrap.style.cssText='background:var(--s1);border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);border-top:none;padding:12px 16px;margin-bottom:8px;margin-top:-4px;';
-        histWrap.innerHTML=`<table class="year-table" style="width:100%;">
+        histContent.innerHTML=`<table class="year-table" style="width:100%;margin-bottom:10px;">
           <thead><tr><th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Invested</th><th style="text-align:right;">G/L</th><th></th></tr></thead>
           <tbody>${allDates.map(date=>{
             const vE=(acc.valueHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
             const iE=(acc.investedHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
-            const gl=vE&&iE?vE.value-iE.amount:null;
-            const pct=gl!==null&&iE&&iE.amount>0?(gl/iE.amount*100):null;
+            const glRow=vE&&iE?vE.value-iE.amount:null;
+            const pct=glRow!==null&&iE&&iE.amount>0?(glRow/iE.amount*100):null;
             const hasEntry=(acc.valueHistory||[]).some(e=>e.date===date)||(acc.investedHistory||[]).some(e=>e.date===date);
             return `<tr>
               <td style="font-family:'DM Mono',monospace;font-size:11px;">${new Date(date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td>
               <td style="text-align:right;font-family:'DM Mono',monospace;">${vE?fmt(vE.value):'—'}</td>
               <td style="text-align:right;font-family:'DM Mono',monospace;">${iE?fmt(iE.amount):'—'}</td>
-              <td style="text-align:right;font-family:'DM Mono',monospace;" class="${gl===null?'':gl>=0?'saved-pos':'saved-neg'}">${gl===null?'—':fmtSign(gl)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'')}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;" class="${glRow===null?'':glRow>=0?'saved-pos':'saved-neg'}">${glRow===null?'—':fmtSign(glRow)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'')}</td>
               <td style="text-align:right;">${hasEntry?`<button onclick="openEditInvSnapshot('${acc.id}','${date}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>`:''}</td>
             </tr>`;
-          }).join('')}</tbody></table>
-        <button onclick="openInvSnapshot('${acc.id}')" style="width:100%;margin-top:10px;padding:8px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">+ Record Snapshot</button>`;
-        container.appendChild(histWrap);
+          }).join('')}</tbody></table>`;
+      } else {
+        histContent.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">No snapshots yet.</div>';
       }
+      // Record snapshot button always at bottom
+      const snapBtn=document.createElement('button');
+      snapBtn.textContent='+ Record Snapshot';
+      snapBtn.style.cssText='width:100%;padding:8px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;';
+      snapBtn.onmouseover=()=>{snapBtn.style.borderColor='var(--gold)';snapBtn.style.color='var(--gold)';};
+      snapBtn.onmouseout=()=>{snapBtn.style.borderColor='var(--border)';snapBtn.style.color='var(--muted)';};
+      snapBtn.onclick=(e)=>{e.stopPropagation();openInvSnapshot(acc.id);};
+      histContent.appendChild(snapBtn);
+      histBody.appendChild(histContent);
+
+      container.appendChild(wrap);
     });
 
     // Bottom margin for group
