@@ -339,7 +339,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   <header>
     <div class="mode-dropdown-wrap">
       <button class="mode-dropdown-btn" id="modeDropBtn" onclick="toggleModeDropdown()">
-        <span class="logo-title">Ledger<span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;margin-left:6px;vertical-align:middle;opacity:.7;">v1.0 · 23 Jul 10:59</span></span>
+        <span class="logo-title">Ledger<span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;margin-left:6px;vertical-align:middle;opacity:.7;">v1.0 · 23 Jul 11:15</span></span>
         <span class="logo-sub" id="modeSubLabel">MONTHLY SAVINGS <span class="dd-arrow">▼</span></span>
       </button>
       <div class="mode-dropdown-menu" id="modeDropMenu">
@@ -4776,7 +4776,7 @@ function renderInvestments(){
 
     // Group total value
     const groupTotal=typeAccs.reduce((sum,a)=>{
-      const v=invLatest(a.valueHistory); return sum+(v?v.value:0);
+      const v=invLatest(a.valueHistory); return sum+invEffectiveValue(a,v);
     },0);
 
     // Group header
@@ -4946,7 +4946,7 @@ function renderInvLineChart(accs,dates){
   const el=$id('invChart'); el.innerHTML='';
   const values=dates.map(d=>accs.reduce((sum,a)=>{
     const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));
-    return sum+(e.length?e[0].value:0);
+    return sum+(e.length?invEffectiveValue(a,e[0]):0);
   },0));
   invDrawSVGLine(el, dates, values, 'var(--gold)', 160, true);
 }
@@ -5037,7 +5037,7 @@ function renderInvDonut(accs){
   accs.forEach(a=>{
     const v=invLatest(a.valueHistory);
     if(!v) return;
-    byType[a.type]=(byType[a.type]||0)+v.value;
+    byType[a.type]=(byType[a.type]||0)+invEffectiveValue(a,v);
   });
   const entries=Object.entries(byType).sort((a,b)=>b[1]-a[1]);
   const total=entries.reduce((s,[,v])=>s+v,0);
