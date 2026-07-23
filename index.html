@@ -674,7 +674,15 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
     <div id="invSnapAccName" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px;"></div>
     <div class="field"><label>Date</label><input type="date" id="invSnapDate"></div>
     <div class="field"><label>Balance / Value (£)</label><input type="number" id="invSnapValue" step="0.01" placeholder="0.00"></div>
-    <div class="field"><label>Amount Invested (£) <span style="color:var(--muted);font-size:10px;">optional — for gain/loss tracking</span></label><input type="number" id="invSnapInvested" step="0.01" placeholder="Leave blank for cash accounts"></div>
+    <div class="field" id="invSnapMortgageField" style="display:none;">
+      <label>Mortgage Balance Remaining (£) <span style="color:var(--muted);font-size:10px;">optional</span></label>
+      <input type="number" id="invSnapMortgage" step="0.01" placeholder="Amount still owed on mortgage">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Equity = Property Value − Mortgage Balance</div>
+    </div>
+    <div class="field" id="invSnapInvestedField">
+      <label>Amount Invested (£) <span style="color:var(--muted);font-size:10px;">optional — for gain/loss tracking</span></label>
+      <input type="number" id="invSnapInvested" step="0.01" placeholder="Leave blank for cash accounts">
+    </div>
     <div class="mbtns">
       <button class="mbtn-g" onclick="closeInvSnapModal()">Cancel</button>
       <button class="mbtn-d" id="invSnapDelBtn" style="display:none;" onclick="deleteInvSnapshot()">Delete</button>
@@ -2413,10 +2421,14 @@ function removeSnapshot(accountId, entryId){
 
 // ── CURRENT BALANCE HELPER ──
 function currentAccountBalance(account){
-  // Works for both old settings.accounts format and new investments format
   if(account.valueHistory){
     const latest=invLatest(account.valueHistory);
-    return latest?latest.value:0;
+    if(!latest) return 0;
+    // Property: net worth = equity (value minus mortgage)
+    if(account.type==='Property'&&latest.mortgage!=null){
+      return latest.value - latest.mortgage;
+    }
+    return latest.value;
   }
   if(!account.history||!account.history.length) return account.balance||0;
   return [...account.history].sort((a,b)=>b.date.localeCompare(a.date))[0].balance;
@@ -2511,7 +2523,10 @@ function getAllSnapshotDates(){
 function totalNetWorthAt(date){
   return nwAccounts().reduce((sum,a)=>{
     const entries=(a.valueHistory||[]).filter(e=>e.date<=date).sort((x,y)=>y.date.localeCompare(x.date));
-    return sum+(entries.length?entries[0].value:0);
+    if(!entries.length) return sum;
+    const snap=entries[0];
+    if(a.type==='Property'&&snap.mortgage!=null) return sum+(snap.value-snap.mortgage);
+    return sum+snap.value;
   },0);
 }
 
@@ -4780,18 +4795,39 @@ function renderInvestments(){
     typeAccs.forEach(acc=>{
       const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
       const gl=invGainLoss(acc);
+      const isProperty=acc.type==='Property';
       const histKey='invHist_'+acc.id;
       const histOpen=invGroupOpen[histKey]||false;
       const allDates=[...new Set([...(acc.valueHistory||[]).map(e=>e.date),...(acc.investedHistory||[]).map(e=>e.date)])].sort().reverse();
 
-      // Outer wrapper — card + history as one unit
+      // Compute equity for property
+      const equity=isProperty&&latVal&&latVal.mortgage!=null ? latVal.value-latVal.mortgage : null;
+
+      // Outer wrapper
       const wrap=document.createElement('div');
       wrap.style.cssText='margin-top:4px;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;';
 
-      // Account card (no individual border — outer wrap provides it)
+      // Account card
       const card=document.createElement('div');
       card.className='inv-account';
       card.style.cssText='border:none;border-radius:0;margin:0;';
+
+      // Stats: property shows Value / Mortgage / Equity; others show Value / Invested / G/L
+      const statsHtml = isProperty ? `
+        <div class="inv-stat"><div class="inv-stat-label">Property Value</div><div class="inv-stat-val">${latVal?fmt(latVal.value):'—'}</div></div>
+        <div class="inv-stat"><div class="inv-stat-label">Mortgage Remaining</div><div class="inv-stat-val">${latVal&&latVal.mortgage!=null?fmt(latVal.mortgage):'—'}</div></div>
+        <div class="inv-stat"><div class="inv-stat-label">Equity</div>
+          <div class="inv-stat-val ${equity!==null?'pos':''}">
+            ${equity!==null?fmt(equity)+'<div style="font-size:11px;margin-top:2px;font-family:\'DM Mono\',monospace;">'+(latVal?((equity/latVal.value)*100).toFixed(1)+'%':'')+'</div>':'—'}
+          </div>
+        </div>` : `
+        <div class="inv-stat"><div class="inv-stat-label">Balance / Value</div><div class="inv-stat-val">${latVal?fmt(latVal.value):'—'}</div></div>
+        <div class="inv-stat"><div class="inv-stat-label">Invested</div><div class="inv-stat-val">${latInv?fmt(latInv.amount):'—'}</div></div>
+        <div class="inv-stat"><div class="inv-stat-label">Gain / Loss</div>
+          <div class="inv-stat-val ${gl?(gl.gl>=0?'pos':'neg'):''}">
+            ${gl?fmtSign(gl.gl)+'<div style="font-size:11px;margin-top:2px;font-family:\'DM Mono\',monospace;">'+(gl.pct>=0?'+':'')+gl.pct.toFixed(1)+'%</div>':'—'}
+          </div>
+        </div>`;
       card.innerHTML=`
         <div class="inv-account-header">
           <div class="inv-account-icon">${icon}</div>
@@ -4801,15 +4837,7 @@ function renderInvestments(){
           </div>
           <button onclick="event.stopPropagation();openEditInvAcc('${acc.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:4px 8px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>
         </div>
-        <div class="inv-account-stats">
-          <div class="inv-stat"><div class="inv-stat-label">Balance / Value</div><div class="inv-stat-val">${latVal?fmt(latVal.value):'—'}</div></div>
-          <div class="inv-stat"><div class="inv-stat-label">Invested</div><div class="inv-stat-val">${latInv?fmt(latInv.amount):'—'}</div></div>
-          <div class="inv-stat"><div class="inv-stat-label">Gain / Loss</div>
-            <div class="inv-stat-val ${gl?(gl.gl>=0?'pos':'neg'):''}">
-              ${gl?fmtSign(gl.gl)+'<div style="font-size:11px;margin-top:2px;font-family:\'DM Mono\',monospace;">'+(gl.pct>=0?'+':'')+gl.pct.toFixed(1)+'%</div>':'—'}
-            </div>
-          </div>
-        </div>
+        <div class="inv-account-stats">${statsHtml}</div>
         ${acc.notes?`<div style="font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">${esc(acc.notes)}</div>`:''}`;
       card.onclick=()=>openInvSnapshot(acc.id);
       wrap.appendChild(card);
@@ -4839,30 +4867,45 @@ function renderInvestments(){
       wrap.appendChild(toggleBar);
       wrap.appendChild(histBody);
 
-      // History content
+      // History content — property-aware columns
       const histContent=document.createElement('div');
       histContent.style.cssText='padding:12px 14px;border-top:1px solid var(--border);background:var(--s1);';
       if(allDates.length){
+        const headerCols=isProperty
+          ?'<th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Mortgage</th><th style="text-align:right;">Equity</th><th></th>'
+          :'<th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Invested</th><th style="text-align:right;">G/L</th><th></th>';
         histContent.innerHTML=`<table class="year-table" style="width:100%;margin-bottom:10px;">
-          <thead><tr><th>Date</th><th style="text-align:right;">Value</th><th style="text-align:right;">Invested</th><th style="text-align:right;">G/L</th><th></th></tr></thead>
+          <thead><tr>${headerCols}</tr></thead>
           <tbody>${allDates.map(date=>{
             const vE=(acc.valueHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
             const iE=(acc.investedHistory||[]).filter(e=>e.date<=date).sort((a,b)=>b.date.localeCompare(a.date))[0];
-            const glRow=vE&&iE?vE.value-iE.amount:null;
-            const pct=glRow!==null&&iE&&iE.amount>0?(glRow/iE.amount*100):null;
             const hasEntry=(acc.valueHistory||[]).some(e=>e.date===date)||(acc.investedHistory||[]).some(e=>e.date===date);
+            let col3='—',col4='—',col4class='';
+            if(isProperty){
+              const mort=vE&&vE.mortgage!=null?vE.mortgage:null;
+              const eq=vE&&mort!=null?vE.value-mort:null;
+              const eqPct=eq!=null&&vE?((eq/vE.value)*100).toFixed(1):null;
+              col3=mort!=null?fmt(mort):'—';
+              col4=eq!=null?fmt(eq)+(eqPct?'<br><span style="font-size:10px;">'+eqPct+'%</span>':''):'—';
+              col4class='saved-pos';
+            } else {
+              const glRow=vE&&iE?vE.value-iE.amount:null;
+              const pct=glRow!==null&&iE&&iE.amount>0?(glRow/iE.amount*100):null;
+              col3=iE?fmt(iE.amount):'—';
+              col4=glRow===null?'—':fmtSign(glRow)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'');
+              col4class=glRow===null?'':glRow>=0?'saved-pos':'saved-neg';
+            }
             return `<tr>
               <td style="font-family:'DM Mono',monospace;font-size:11px;">${new Date(date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td>
               <td style="text-align:right;font-family:'DM Mono',monospace;">${vE?fmt(vE.value):'—'}</td>
-              <td style="text-align:right;font-family:'DM Mono',monospace;">${iE?fmt(iE.amount):'—'}</td>
-              <td style="text-align:right;font-family:'DM Mono',monospace;" class="${glRow===null?'':glRow>=0?'saved-pos':'saved-neg'}">${glRow===null?'—':fmtSign(glRow)+(pct!==null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':'')}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;">${col3}</td>
+              <td style="text-align:right;font-family:'DM Mono',monospace;" class="${col4class}">${col4}</td>
               <td style="text-align:right;">${hasEntry?`<button onclick="openEditInvSnapshot('${acc.id}','${date}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--muted)'">edit</button>`:''}</td>
             </tr>`;
           }).join('')}</tbody></table>`;
       } else {
         histContent.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">No snapshots yet.</div>';
       }
-      // Record snapshot button always at bottom
       const snapBtn=document.createElement('button');
       snapBtn.textContent='+ Record Snapshot';
       snapBtn.style.cssText='width:100%;padding:8px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s;';
@@ -4871,7 +4914,6 @@ function renderInvestments(){
       snapBtn.onclick=(e)=>{e.stopPropagation();openInvSnapshot(acc.id);};
       histContent.appendChild(snapBtn);
       histBody.appendChild(histContent);
-
       container.appendChild(wrap);
     });
 
@@ -5076,21 +5118,31 @@ function deleteInvestmentAccount(){
   save(); closeInvAccModal(); renderInvestments();
 }
 
+function invSnapSetPropertyMode(isProperty){
+  $id('invSnapMortgageField').style.display = isProperty ? '' : 'none';
+  $id('invSnapInvestedField').style.display = isProperty ? 'none' : '';
+}
+
 function openInvSnapshot(accId){
   invSnapAccId=accId; editingInvSnapId=null;
   const acc=(D.investments||[]).find(x=>x.id===accId); if(!acc) return;
+  const isProperty=acc.type==='Property';
   $id('invSnapModalTitle').textContent='Record Snapshot';
   $id('invSnapAccName').textContent=acc.name+(acc.platform?' · '+acc.platform:'');
   $id('invSnapDelBtn').style.display='none';
   $id('invSnapDate').value=new Date().toISOString().slice(0,10);
   const latVal=invLatest(acc.valueHistory), latInv=invLatest(acc.investedHistory);
   $id('invSnapValue').value=latVal?latVal.value:'';
+  $id('invSnapMortgage').value=latVal&&latVal.mortgage!=null?latVal.mortgage:'';
   $id('invSnapInvested').value=latInv?latInv.amount:'';
+  invSnapSetPropertyMode(isProperty);
   $id('invSnapOv').classList.add('on');
 }
+
 function openEditInvSnapshot(accId,date){
   invSnapAccId=accId; editingInvSnapId=date;
   const acc=(D.investments||[]).find(x=>x.id===accId); if(!acc) return;
+  const isProperty=acc.type==='Property';
   const vE=(acc.valueHistory||[]).find(e=>e.date===date);
   const iE=(acc.investedHistory||[]).find(e=>e.date===date);
   $id('invSnapModalTitle').textContent='Edit Snapshot';
@@ -5098,24 +5150,48 @@ function openEditInvSnapshot(accId,date){
   $id('invSnapDelBtn').style.display='';
   $id('invSnapDate').value=date;
   $id('invSnapValue').value=vE?vE.value:'';
+  $id('invSnapMortgage').value=vE&&vE.mortgage!=null?vE.mortgage:'';
   $id('invSnapInvested').value=iE?iE.amount:'';
+  invSnapSetPropertyMode(isProperty);
   $id('invSnapOv').classList.add('on');
 }
+
 function closeInvSnapModal(){ $id('invSnapOv').classList.remove('on'); }
 $id('invSnapOv').addEventListener('click',e=>{ if(e.target===$id('invSnapOv')) closeInvSnapModal(); });
 
 function saveInvSnapshot(){
   const date=$id('invSnapDate').value;
-  const rawVal=$id('invSnapValue').value, rawInv=$id('invSnapInvested').value;
+  const rawVal=$id('invSnapValue').value;
+  const rawInv=$id('invSnapInvested').value;
+  const rawMort=$id('invSnapMortgage').value;
   if(!date){ alert('Please enter a date.'); return; }
-  if(rawVal===''&&rawInv===''){ alert('Please enter at least a current value or invested amount.'); return; }
+  if(rawVal===''){ alert('Please enter a property value or balance.'); return; }
   const acc=(D.investments||[]).find(x=>x.id===invSnapAccId); if(!acc) return;
+  const isProperty=acc.type==='Property';
   if(!acc.valueHistory) acc.valueHistory=[];
   if(!acc.investedHistory) acc.investedHistory=[];
-  if(rawVal!==''){ const val=parseFloat(rawVal); if(!isNaN(val)){ acc.valueHistory=acc.valueHistory.filter(e=>e.date!==date); acc.valueHistory.push({id:`v_${Date.now()}`,value:val,date}); } }
-  if(rawInv!==''){ const inv=parseFloat(rawInv); if(!isNaN(inv)){ acc.investedHistory=acc.investedHistory.filter(e=>e.date!==date); acc.investedHistory.push({id:`i_${Date.now()}`,amount:inv,date}); } }
+  if(rawVal!==''){
+    const val=parseFloat(rawVal);
+    if(!isNaN(val)){
+      const entry={id:`v_${Date.now()}`,value:val,date};
+      if(isProperty&&rawMort!==''){
+        const mort=parseFloat(rawMort);
+        if(!isNaN(mort)) entry.mortgage=mort;
+      }
+      acc.valueHistory=acc.valueHistory.filter(e=>e.date!==date);
+      acc.valueHistory.push(entry);
+    }
+  }
+  if(!isProperty&&rawInv!==''){
+    const inv=parseFloat(rawInv);
+    if(!isNaN(inv)){
+      acc.investedHistory=acc.investedHistory.filter(e=>e.date!==date);
+      acc.investedHistory.push({id:`i_${Date.now()}`,amount:inv,date});
+    }
+  }
   save(); closeInvSnapModal(); renderInvestments();
 }
+
 function deleteInvSnapshot(){
   if(!editingInvSnapId||!invSnapAccId) return;
   const acc=(D.investments||[]).find(x=>x.id===invSnapAccId); if(!acc) return;
