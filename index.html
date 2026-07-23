@@ -339,7 +339,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(0.6);}
   <header>
     <div class="mode-dropdown-wrap">
       <button class="mode-dropdown-btn" id="modeDropBtn" onclick="toggleModeDropdown()">
-        <span class="logo-title">Ledger<span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;margin-left:6px;vertical-align:middle;opacity:.7;">v1.0 · 18 Jul 00:41</span></span>
+        <span class="logo-title">Ledger<span style="font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;margin-left:6px;vertical-align:middle;opacity:.7;">v1.0 · 23 Jul 10:59</span></span>
         <span class="logo-sub" id="modeSubLabel">MONTHLY SAVINGS <span class="dd-arrow">▼</span></span>
       </button>
       <div class="mode-dropdown-menu" id="modeDropMenu">
@@ -4664,8 +4664,25 @@ function invLatest(history){
   if(!history||!history.length) return null;
   return [...history].sort((a,b)=>b.date.localeCompare(a.date))[0];
 }
-function invTotalValue(){ return (D.investments||[]).reduce((s,a)=>{ const v=invLatest(a.valueHistory); return s+(v?v.value:0); },0); }
-function invTotalInvested(){ return (D.investments||[]).reduce((s,a)=>{ const v=invLatest(a.investedHistory); return s+(v?v.amount:0); },0); }
+function invEffectiveValue(acc, snap){
+  // For property: use equity (value - mortgage); for all others: use raw value
+  if(!snap) return 0;
+  if(acc.type==='Property'&&snap.mortgage!=null) return snap.value-snap.mortgage;
+  return snap.value;
+}
+function invTotalValue(){
+  return (D.investments||[]).reduce((s,a)=>{
+    const v=invLatest(a.valueHistory);
+    return s+invEffectiveValue(a,v);
+  },0);
+}
+function invTotalInvested(){
+  return (D.investments||[]).reduce((s,a)=>{
+    // Property: "invested" = deposit paid (original equity), skip if no mortgage
+    const v=invLatest(a.investedHistory);
+    return s+(v?v.amount:0);
+  },0);
+}
 function invGainLoss(acc){
   const v=invLatest(acc.valueHistory), i=invLatest(acc.investedHistory);
   if(!v||!i) return null;
@@ -4681,7 +4698,8 @@ function invAllDates(){
 function invPortfolioAt(date){
   return (D.investments||[]).reduce((sum,a)=>{
     const entries=(a.valueHistory||[]).filter(e=>e.date<=date).sort((x,y)=>y.date.localeCompare(x.date));
-    return sum+(entries.length?entries[0].value:0);
+    if(!entries.length) return sum;
+    return sum+invEffectiveValue(a,entries[0]);
   },0);
 }
 
@@ -4937,7 +4955,7 @@ function renderInvLineChart(accs,dates){
 function renderInvGLChart(accs,dates){
   const el=$id('invGLChart'); el.innerHTML='';
   const pcts=dates.map(d=>{
-    const val=accs.reduce((sum,a)=>{const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));return sum+(e.length?e[0].value:0);},0);
+    const val=accs.reduce((sum,a)=>{const e=(a.valueHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));return sum+(e.length?invEffectiveValue(a,e[0]):0);},0);
     const inv=accs.reduce((sum,a)=>{const e=(a.investedHistory||[]).filter(x=>x.date<=d).sort((x,y)=>y.date.localeCompare(x.date));return sum+(e.length?e[0].amount:0);},0);
     return inv>0?((val-inv)/inv*100):0;
   });
